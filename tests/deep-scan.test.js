@@ -14,7 +14,9 @@ function extractFunction(source, signature, nextSignature) {
 }
 
 function loadDeepScanHelpers() {
-  const source = fs.readFileSync(path.join(__dirname, "../content.js"), "utf8");
+  const source = fs
+    .readFileSync(path.join(__dirname, "../content.js"), "utf8")
+    .replace(/\r\n/g, "\n");
   const constants = source.slice(
     source.indexOf("  const DEEP_SCAN_MAX_ROUNDS ="),
     source.indexOf("\n\n  const fieldRuntimeMap")
@@ -22,7 +24,7 @@ function loadDeepScanHelpers() {
   const snippet = `
     ${constants}
     function isVisible() { return true; }
-    ${extractFunction(source, "  function normalizeDeepScanText(value) {", "  function getDeepScanTargetElements(el) {")}
+    ${extractFunction(source, "  function normalizeDeepScanText(value) {", "  function getDeepScanText(el) {")}
     ${extractFunction(source, "  function getDeepScanText(el) {", "  function getDeepScanTargetElements(el) {")}
     ${extractFunction(source, "  function getDeepScanTargetElements(el) {", "  function hasHiddenDeepScanTarget(el) {")}
     ${extractFunction(source, "  function hasHiddenDeepScanTarget(el) {", "  function isDeepScanExpandTrigger(el) {")}

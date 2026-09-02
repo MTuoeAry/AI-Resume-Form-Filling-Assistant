@@ -69,8 +69,10 @@
       fields: [
         { key: "fullName", label: "姓名", input: "text", placeholder: "张三" },
         { key: "firstName", label: "名", input: "text", placeholder: "三" },
+        { key: "firstNamePinyin", label: "名拼音", input: "text", placeholder: "San" },
         { key: "middleName", label: "中间名", input: "text", placeholder: "可选" },
         { key: "lastName", label: "姓", input: "text", placeholder: "张" },
+        { key: "lastNamePinyin", label: "姓拼音", input: "text", placeholder: "Zhang" },
         { key: "preferredName", label: "常用名", input: "text", placeholder: "Sam" },
         { key: "englishName", label: "英文名", input: "text", placeholder: "Sam Zhang" },
         {
@@ -91,7 +93,8 @@
         { key: "currentProvince", label: "现居省份/州", input: "text", placeholder: "上海" },
         { key: "currentCountry", label: "现居国家", input: "text", placeholder: "中国" },
         { key: "currentDistrict", label: "现居区县", input: "text", placeholder: "浦东新区" },
-        { key: "nationality", label: "民族/国籍", input: "text", placeholder: "中国" },
+        { key: "ethnicity", label: "民族", input: "text", placeholder: "汉族" },
+        { key: "nationality", label: "国籍/地区", input: "text", placeholder: "中国" },
         { key: "citizenship", label: "公民身份", input: "text", placeholder: "中国" },
         { key: "maritalStatus", label: "婚姻状况", input: "select", options: ["", "未婚", "已婚", "不方便透露"] },
         { key: "currentCompany", label: "当前公司", input: "text", placeholder: "某科技公司" },
@@ -124,6 +127,7 @@
         { key: "hometownProvince", label: "籍贯省份/州", input: "text", placeholder: "江苏" },
         { key: "hukouLocation", label: "户口所在地", input: "text", placeholder: "江苏南京" },
         { key: "emergencyContactName", label: "紧急联系人姓名", input: "text", placeholder: "李四" },
+        { key: "emergencyContactRelationship", label: "紧急联系人关系", input: "text", placeholder: "父亲 / 母亲 / 配偶" },
         { key: "emergencyContactPhone", label: "紧急联系人电话", input: "tel", placeholder: "13700137000" },
         { key: "timezone", label: "当前时区", input: "text", placeholder: "Asia/Shanghai" },
       ],
@@ -237,10 +241,11 @@
       key: "educations",
       label: "教育经历",
       type: "list",
-      initialItems: 1,
+      initialItems: 0,
+      minItems: 0,
       slots: 4,
       itemLabel: "教育经历",
-      note: "按照时间从近到远填写，不需要的条目留空。",
+      note: "按照时间从近到远填写；没有时可保持 0 条。",
       fields: [
         { key: "school", label: "学校名称", input: "text", placeholder: "清华大学" },
         {
@@ -262,7 +267,7 @@
           options: ["", "统招", "非统招", "联合培养", "委托培养", "其他"],
         },
         { key: "major", label: "专业", input: "text", placeholder: "计算机科学与技术" },
-        { key: "minor", label: "辅修专业", input: "text", placeholder: "数学" },
+        { key: "minor", label: "第二专业 / 辅修专业", input: "text", placeholder: "数学" },
         { key: "faculty", label: "院系", input: "text", placeholder: "计算机学院" },
         { key: "className", label: "班级", input: "text", placeholder: "计算机 2101 班" },
         { key: "studentId", label: "学号", input: "text", placeholder: "20231234" },
@@ -286,10 +291,11 @@
       key: "internships",
       label: "实习经历",
       type: "list",
-      initialItems: 1,
+      initialItems: 0,
+      minItems: 0,
       slots: 4,
       itemLabel: "实习经历",
-      note: "校招场景里优先填写与目标岗位最相关的实习。",
+      note: "校招场景里优先填写与目标岗位最相关的实习；没有时可保持 0 条。",
       fields: [
         { key: "company", label: "公司名称", input: "text", placeholder: "字节跳动" },
         { key: "title", label: "职位名称", input: "text", placeholder: "后端开发实习生" },
@@ -313,10 +319,11 @@
       key: "workExperiences",
       label: "工作经历",
       type: "list",
-      initialItems: 1,
+      initialItems: 0,
+      minItems: 0,
       slots: 6,
       itemLabel: "工作经历",
-      note: "按照时间从近到远填写，不需要的条目留空。",
+      note: "仅填写正式工作经历；应届生没有正式工作经历时保持 0 条，实习请填写到“实习经历”。",
       fields: [
         { key: "company", label: "公司名称", input: "text", placeholder: "某科技公司" },
         { key: "title", label: "职位名称", input: "text", placeholder: "软件工程师" },
@@ -349,10 +356,11 @@
       key: "projects",
       label: "项目经历",
       type: "list",
-      initialItems: 1,
+      initialItems: 0,
+      minItems: 0,
       slots: 5,
       itemLabel: "项目经历",
-      note: "按照重要程度或时间顺序填写，不需要的条目留空。",
+      note: "按照重要程度或时间顺序填写；没有时可保持 0 条。",
       fields: [
         { key: "name", label: "项目名称", input: "text", placeholder: "AI 简历填表助手" },
         { key: "role", label: "项目角色", input: "text", placeholder: "负责人 / 核心开发" },
@@ -371,10 +379,11 @@
       key: "campusExperiences",
       label: "校园经历",
       type: "list",
-      initialItems: 1,
+      initialItems: 0,
+      minItems: 0,
       slots: 4,
       itemLabel: "校园经历",
-      note: "适合学生组织、社团、志愿服务、科研助理等经历。",
+      note: "适合学生组织、社团、志愿服务、科研助理等经历；没有时可保持 0 条。",
       fields: [
         {
           key: "category",
@@ -400,10 +409,11 @@
       key: "certificates",
       label: "证书与认证",
       type: "list",
-      initialItems: 1,
+      initialItems: 0,
+      minItems: 0,
       slots: 5,
       itemLabel: "证书与认证",
-      note: "没有可以留空。",
+      note: "没有时可保持 0 条。",
       fields: [
         { key: "name", label: "证书名称", input: "text", placeholder: "AWS 认证解决方案架构师" },
         { key: "issuer", label: "颁发机构", input: "text", placeholder: "亚马逊云科技" },
@@ -418,10 +428,11 @@
       key: "languages",
       label: "语言能力",
       type: "list",
-      initialItems: 1,
+      initialItems: 0,
+      minItems: 0,
       slots: 5,
       itemLabel: "语言能力",
-      note: "没有可以留空。",
+      note: "没有时可保持 0 条。",
       fields: [
         { key: "name", label: "语言", input: "text", placeholder: "英语" },
         {
@@ -434,13 +445,71 @@
       ],
     },
     {
+      key: "awards",
+      label: "获奖经历",
+      type: "list",
+      initialItems: 0,
+      minItems: 0,
+      slots: 8,
+      itemLabel: "获奖经历",
+      note: "用于奖学金、竞赛奖项、荣誉称号等结构化信息；没有时可保持 0 条。",
+      fields: [
+        { key: "date", label: "获奖时间", input: "date" },
+        { key: "name", label: "奖项名称", input: "text", placeholder: "国家奖学金" },
+        { key: "type", label: "奖项类型", input: "text", placeholder: "奖学金 / 竞赛 / 荣誉" },
+        { key: "level", label: "奖项级别", input: "text", placeholder: "国家级 / 省级 / 校级" },
+        { key: "rank", label: "奖项等级 / 名次", input: "text", placeholder: "一等奖 / 第 1 名" },
+        { key: "issuer", label: "颁发机构", input: "text", placeholder: "教育部 / 学校 / 赛事组委会" },
+        { key: "details", label: "奖项详情", input: "textarea", placeholder: "获奖背景、选拔范围和成果说明" },
+      ],
+    },
+    {
+      key: "patents",
+      label: "发明专利",
+      type: "list",
+      initialItems: 0,
+      minItems: 0,
+      slots: 6,
+      itemLabel: "发明专利",
+      note: "用于发明、实用新型、外观设计和软件著作权等成果；没有时可保持 0 条。",
+      fields: [
+        { key: "publicationDate", label: "发布时间", input: "date" },
+        { key: "name", label: "专利名称", input: "text", placeholder: "一种……的方法与系统" },
+        { key: "number", label: "专利编号", input: "text", placeholder: "CNxxxxxxxxx" },
+        { key: "type", label: "专利类型", input: "text", placeholder: "发明专利 / 实用新型" },
+        { key: "status", label: "专利状态", input: "text", placeholder: "已授权 / 受理中" },
+        { key: "role", label: "本人角色", input: "text", placeholder: "第一发明人 / 共同发明人" },
+        { key: "details", label: "专利详情", input: "textarea", placeholder: "独特性、社会价值和专业价值" },
+      ],
+    },
+    {
+      key: "publications",
+      label: "论文发表",
+      type: "list",
+      initialItems: 0,
+      minItems: 0,
+      slots: 8,
+      itemLabel: "论文",
+      note: "用于期刊、会议论文、学位论文和其他公开发表成果；没有时可保持 0 条。",
+      fields: [
+        { key: "publicationDate", label: "发表时间", input: "date" },
+        { key: "title", label: "论文名称", input: "text", placeholder: "论文标题" },
+        { key: "venue", label: "期刊 / 会议", input: "text", placeholder: "期刊或会议名称" },
+        { key: "authors", label: "作者", input: "text", placeholder: "作者列表" },
+        { key: "role", label: "本人角色", input: "text", placeholder: "第一作者 / 通讯作者" },
+        { key: "impactFactor", label: "影响因子", input: "text", placeholder: "例如 6.7；会议论文可留空" },
+        { key: "url", label: "论文链接", input: "url", placeholder: "https://..." },
+        { key: "details", label: "论文详情", input: "textarea", placeholder: "主要论点、研究方法和成果" },
+      ],
+    },
+    {
       key: "additional",
       label: "补充信息",
       type: "group",
       fields: [
-        { key: "awards", label: "奖项荣誉", input: "textarea", placeholder: "奖学金、竞赛获奖、优秀员工等" },
-        { key: "publications", label: "论文发表", input: "textarea", placeholder: "论文标题、会议/期刊、年份等" },
-        { key: "patents", label: "专利", input: "textarea", placeholder: "专利名称、编号、状态等" },
+        { key: "awards", label: "奖项荣誉（旧版汇总）", input: "textarea", placeholder: "升级后建议迁移到“获奖经历”列表" },
+        { key: "publications", label: "论文发表（旧版汇总）", input: "textarea", placeholder: "升级后建议迁移到“论文发表”列表" },
+        { key: "patents", label: "专利（旧版汇总）", input: "textarea", placeholder: "升级后建议迁移到“发明专利”列表" },
         { key: "volunteerExperience", label: "志愿者经历", input: "textarea", placeholder: "组织、职责、时长等" },
         { key: "competitions", label: "竞赛经历", input: "textarea", placeholder: "黑客松、ACM、Kaggle、数学建模等" },
         { key: "openSourceContributions", label: "开源贡献", input: "textarea", placeholder: "仓库、PR、维护经历等" },
@@ -449,15 +518,36 @@
         { key: "customNotes", label: "其他备注", input: "textarea", placeholder: "表单里经常会问到的其它信息" },
       ],
     },
+    {
+      key: "customFields",
+      label: "自定义字段",
+      type: "list",
+      initialItems: 0,
+      minItems: 0,
+      slots: 20,
+      itemLabel: "自定义字段",
+      note: "用于标准 Schema 暂未覆盖、但经常出现在网申中的长尾字段；没有时可保持 0 条。",
+      fields: [
+        { key: "group", label: "分组", input: "text", placeholder: "基本信息 / 求职偏好 / 其它", catalog: false },
+        { key: "label", label: "字段名称", input: "text", placeholder: "例如：是否接受调剂", catalog: false },
+        { key: "aliases", label: "字段别名", input: "text", placeholder: "多个别名用逗号分隔", catalog: false },
+        { key: "value", label: "字段内容", input: "textarea", placeholder: "该字段需要填写的内容" },
+      ],
+    },
   ];
 
   const FIELD_VALUE_ALIASES = {
     personal: {
       birthDate: ["birthday", "birth", "dob", "birthMonth", "birthYearMonth", "出生年月"],
+      firstNamePinyin: ["givenNamePinyin", "firstNameSpell", "名拼音"],
+      lastNamePinyin: ["familyNamePinyin", "surnamePinyin", "lastNameSpell", "姓拼音"],
+      ethnicity: ["ethnicGroup", "nation", "民族"],
+      nationality: ["countryOrRegion", "nationalityOrRegion", "国籍", "国籍/地区"],
     },
     contactAndLocation: {
       hometownCity: ["hometown", "nativePlace", "birthPlace", "籍贯"],
       hometownProvince: ["hometown", "nativePlace", "birthPlace", "籍贯"],
+      emergencyContactRelationship: ["emergencyContactRelation", "emergencyRelationship", "与本人关系"],
     },
     identityAndAuthorization: {
       personalIdNumber: ["idNumber", "idCardNumber", "identityCardNumber", "certificateNum", "身份证号"],
@@ -470,6 +560,7 @@
       educationType: ["educationCategory", "educationNature", "学历类型"],
       studyMode: ["learningModality", "learningMode", "培养方式", "学习形式"],
       faculty: ["college", "institute", "instituteName", "院系名称"],
+      minor: ["secondMajor", "secondaryMajor", "第二专业", "辅修专业"],
       academicSystem: ["schoolSystem", "学制"],
       researchDirection: ["researchDire", "direction", "研究方向"],
       advisor: ["tutor", "mentor", "导师"],
@@ -490,10 +581,35 @@
     projects: {
       startDate: ["start", "beginDate", "beginTime", "startTime"],
       endDate: ["end", "finishDate", "finishTime", "endTime"],
+      role: ["responsibilities", "responsibility", "projectRole", "projectDuty", "项目职责", "项目角色"],
+      description: ["projectDescription", "projectSummary", "项目描述", "项目说明"],
+      highlights: ["outcomes", "results", "achievements", "projectResult", "项目成果"],
     },
     campusExperiences: {
       startDate: ["start", "beginDate", "beginTime", "startTime"],
       endDate: ["end", "finishDate", "finishTime", "endTime"],
+    },
+    awards: {
+      date: ["awardDate", "time", "获奖时间"],
+      name: ["awardName", "title", "奖项名称"],
+      type: ["awardType", "category", "奖项类型"],
+      level: ["awardLevel", "scope", "奖项级别"],
+      rank: ["awardRank", "grade", "奖项等级", "名次"],
+      details: ["description", "detail", "奖项详情"],
+    },
+    patents: {
+      publicationDate: ["date", "publishDate", "发布时间"],
+      name: ["patentName", "title", "专利名称"],
+      number: ["patentNumber", "patentNo", "专利编号"],
+      details: ["description", "detail", "专利详情"],
+    },
+    publications: {
+      publicationDate: ["date", "publishDate", "发表时间"],
+      title: ["name", "paperName", "publicationName", "论文名称"],
+      venue: ["journal", "conference", "期刊", "会议"],
+      impactFactor: ["if", "impact", "impactFactor", "影响因子"],
+      url: ["link", "paperLink", "publicationLink", "论文链接"],
+      details: ["description", "abstract", "detail", "论文详情"],
     },
   };
 
@@ -527,8 +643,18 @@
         ? getSectionDefinition(sectionOrKey)
         : sectionOrKey;
     const maxItems = getListSectionMaxItems(section);
-    const initialItems = Math.max(1, Number(section?.initialItems) || 1);
+    const initialItems = Math.max(0, Number(section?.initialItems) || 0);
     return Math.min(maxItems, initialItems);
+  }
+
+  function getListSectionMinItems(sectionOrKey) {
+    const section =
+      typeof sectionOrKey === "string"
+        ? getSectionDefinition(sectionOrKey)
+        : sectionOrKey;
+    const maxItems = getListSectionMaxItems(section);
+    const configured = section?.minItems ?? section?.initialItems ?? 0;
+    return Math.min(maxItems, Math.max(0, Number(configured) || 0));
   }
 
   function createEmptyListItem(sectionKey) {
@@ -789,6 +915,72 @@
     ) {
       profile.identityAndAuthorization.personalIdType = "身份证";
     }
+
+    migrateMisclassifiedInternships(profile);
+  }
+
+  function isInternshipLikeWorkItem(item) {
+    const evidence = normalizeForMatch(
+      [item?.employmentType, item?.title].filter(Boolean).join(" ")
+    );
+    return /(实习|intern|internship|trainee)/.test(evidence);
+  }
+
+  function convertWorkItemToInternship(item) {
+    const converted = createEmptyListItem("internships");
+    const sharedKeys = [
+      "company",
+      "title",
+      "department",
+      "city",
+      "country",
+      "startDate",
+      "endDate",
+      "isCurrent",
+      "description",
+      "achievements",
+      "technologies",
+    ];
+    for (const key of sharedKeys) {
+      if (isMeaningfulValue(item?.[key])) converted[key] = item[key];
+    }
+    return converted;
+  }
+
+  function getExperienceIdentity(item) {
+    const primary = [item?.company, item?.title, item?.startDate, item?.endDate]
+      .map(normalizeForMatch);
+    if (primary.some(Boolean)) return primary.join("|");
+    return [item?.department, item?.description].map(normalizeForMatch).join("|");
+  }
+
+  function migrateMisclassifiedInternships(profile) {
+    const workItems = Array.isArray(profile?.workExperiences)
+      ? profile.workExperiences
+      : [];
+    const misplaced = workItems.filter(isInternshipLikeWorkItem);
+    if (misplaced.length === 0) return;
+
+    const internships = (Array.isArray(profile.internships) ? profile.internships : [])
+      .filter(isMeaningfulValue);
+    const known = new Set(internships.map(getExperienceIdentity));
+    const migratedItems = new Set();
+    const internshipLimit = getListSectionMaxItems("internships");
+
+    for (const item of misplaced) {
+      const converted = convertWorkItemToInternship(item);
+      const identity = getExperienceIdentity(converted);
+      if (known.has(identity)) {
+        migratedItems.add(item);
+      } else if (internships.length < internshipLimit) {
+        internships.push(converted);
+        known.add(identity);
+        migratedItems.add(item);
+      }
+    }
+
+    profile.internships = internships;
+    profile.workExperiences = workItems.filter((item) => !migratedItems.has(item));
   }
 
   function normalizeResumeProfile(input) {
@@ -810,9 +1002,16 @@
         continue;
       }
 
-      const rawList = Array.isArray(source[section.key])
+      const hasExplicitList = Array.isArray(source[section.key]);
+      const rawList = hasExplicitList
         ? source[section.key].slice(0, getListSectionMaxItems(section))
         : [];
+      if (!hasExplicitList) {
+        const legacySummary = getLegacyStructuredSummary(source, section.key);
+        if (legacySummary) {
+          rawList.push(buildLegacyStructuredItem(section.key, legacySummary));
+        }
+      }
       const rawCount = rawList.length;
       let meaningfulCount = 0;
 
@@ -823,7 +1022,9 @@
       }
 
       let itemCount = getListSectionInitialItems(section);
-      if (rawCount > 0) {
+      if (itemCount === 0) {
+        itemCount = meaningfulCount;
+      } else if (rawCount > 0) {
         itemCount =
           rawCount === getListSectionMaxItems(section) && meaningfulCount < rawCount
             ? Math.max(getListSectionInitialItems(section), meaningfulCount)
@@ -851,6 +1052,24 @@
     return profile;
   }
 
+  function getLegacyStructuredSummary(source, sectionKey) {
+    const legacyKeyBySection = {
+      awards: "awards",
+      patents: "patents",
+      publications: "publications",
+    };
+    const legacyKey = legacyKeyBySection[sectionKey];
+    if (!legacyKey) return "";
+    return String(source?.additional?.[legacyKey] || "").trim();
+  }
+
+  function buildLegacyStructuredItem(sectionKey, summary) {
+    if (sectionKey === "awards") return { name: summary, details: summary };
+    if (sectionKey === "patents") return { name: summary, details: summary };
+    if (sectionKey === "publications") return { title: summary, details: summary };
+    return {};
+  }
+
   function getFieldCatalog(options = {}) {
     const fields = [];
     const mode = options.mode || "max";
@@ -859,6 +1078,7 @@
     for (const section of SECTION_DEFINITIONS) {
       if (section.type === "group") {
         for (const field of section.fields) {
+          if (field.catalog === false) continue;
           fields.push({
             path: `${section.key}.${field.key}`,
             sectionKey: section.key,
@@ -887,8 +1107,10 @@
 
       for (let slotIndex = 0; slotIndex < slotCount; slotIndex += 1) {
         for (const field of section.fields) {
+          if (field.catalog === false) continue;
           fields.push({
             path: `${section.key}.${slotIndex}.${field.key}`,
+            fieldKey: field.key,
             sectionKey: section.key,
             sectionLabel: section.label,
             slotIndex,
@@ -918,6 +1140,25 @@
   function getCatalogWithValues(profile) {
     return getFieldCatalog({ mode: "profile", profile }).map((field) => {
       const value = getValueByPath(profile, field.path);
+      if (field.sectionKey === "customFields" && field.fieldKey === "value") {
+        const item = profile?.customFields?.[field.slotIndex] || {};
+        const dynamicLabel = String(item.label || "").trim();
+        const dynamicGroup = String(item.group || "").trim();
+        const aliases = String(item.aliases || "")
+          .split(/[,，;；\n]/)
+          .map((item) => item.trim())
+          .filter(Boolean);
+        return {
+          ...field,
+          label: dynamicLabel || field.label,
+          sectionLabel: dynamicGroup || field.sectionLabel,
+          itemLabel: dynamicLabel || field.itemLabel,
+          aliases,
+          value,
+          hasValue: Boolean(dynamicLabel) && isMeaningfulValue(value),
+          valuePreview: createValuePreview(value),
+        };
+      }
       return {
         ...field,
         value,
@@ -942,10 +1183,11 @@
   }
 
   window.ResumeSchema = {
-    version: 4,
+    version: 5,
     sections: SECTION_DEFINITIONS,
     clone,
     getSectionDefinition,
+    getListSectionMinItems,
     createEmptyListItem,
     createEmptyResumeProfile,
     normalizeResumeProfile,

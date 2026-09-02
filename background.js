@@ -56,14 +56,16 @@ async function callAI(modelId, prompt, mode) {
 2) 只能使用模板已有字段，不要新增字段
 3) 不要编造不存在的信息；没有信息就保留空字符串
 4) 若遇到列表槽位，按时间从近到远填写
-5) 日期尽量规范化`,
+5) 日期尽量规范化
+6) “实习”“实习生”“Intern”“Internship”经历必须放入 internships，不能放入 workExperiences
+7) workExperiences 只用于正式工作；应届生没有正式工作经历时必须保持空数组，不要为了填满模板而创建空条目或复制实习经历`,
 
     field_mapping: `你是一个“网页表单字段映射助手”。
 
 你将收到一个 JSON，包含：
 - fields：当前页面识别到的表单字段
-- fields 中的单个 field 可能额外带有 sectionKey、sectionLabel、sectionEvidence、nearbyLabels，用于表示扫描阶段推断出的区块和邻近标签
-- resumeFields：预先定义好的标准简历字段目录（含 path、label、sectionLabel、itemLabel、hasValue、valuePreview 等）
+- fields 中的单个 field 可能额外带有 sectionKey、sectionLabel、sectionEvidence、sectionItemIndex、nearbyLabels、compositeRole，用于表示扫描阶段推断出的区块、重复条目序号、邻近标签及复合控件角色
+- resumeFields：预先定义好的标准简历字段目录（含 path、label、sectionLabel、itemLabel、aliases、hasValue、valuePreview 等）
 
 你的任务：
 1) 为每个页面 field 选择最合适的 resumePath
@@ -75,14 +77,18 @@ async function callAI(modelId, prompt, mode) {
 映射原则：
 1) 优先综合 field 的 label、context、options、sectionLabel、sectionEvidence、nearbyLabels、所在区块语义，与 resumeFields 的 label、sectionLabel、itemLabel、path、valuePreview 一起判断
 2) 当多个候选语义接近时，优先选择 sectionLabel / itemLabel 更一致、且 hasValue=true 的 resumePath
-3) 对同一区块内重复出现的“起止时间”字段，通常前一个映射开始时间，后一个映射结束时间
+3) compositeRole=start/end 时分别映射开始/结束时间；countryCode/nationalNumber 时分别映射国际区号/本地号码；type/value 时分别映射证件类型/证件号码
 4) 如果 field.label 为空但 sectionLabel / nearbyLabels 不为空，必须充分利用这些扫描线索，不要把它当成完全无信息字段
+5) sectionItemIndex 从 0 开始；项目、获奖、专利、论文等重复区块必须映射到相同序号的 resumeFields 条目，不得把第 2、3 条继续映射到第 1 条
 
 校招场景优先级：
 1) 含“实习”“实习经历”“实习公司”“实习岗位”等语义时，优先映射到 internships.*，不要优先映射到 workExperiences.*
 2) 含“学生组织”“社团”“校园经历”“志愿服务”“科研助理”“班干部”“校园活动”等语义时，优先映射到 campusExperiences.*
 3) 含“学历类型”“培养方式”“实验室”“领域方向”“导师”“学号”“班级”“学制”等语义时，优先映射到 educations.*
-4) 含“学校名称”“学院”“专业”“学历”“GPA”“排名”“论文”“毕业状态”等教育语义时，也优先映射到 educations.*
+4) 含“学校名称”“学院”“专业”“学历”“GPA”“排名”“毕业论文”“学位论文”“毕业状态”等教育语义时，优先映射到 educations.*
+5) “项目经验/项目经历”区块中的起止时间、项目名称、项目职责（或项目角色）、项目描述（或项目说明）、项目成果分别映射到 projects.*.startDate/endDate/name/role/description/highlights；项目职责不得映射为 description，项目描述不得映射为 role
+6) “获奖经历”区块中的获奖时间、奖项名称、奖项类型、奖项级别、奖项等级分别映射到 awards.*.date/name/type/level/rank，不要映射到 additional.awards
+7) 独立“论文”区块中的发表时间、论文名称、论文详情分别映射到 publications.*.publicationDate/title/details，不要映射到 educations.* 或 additional.publications
 
 保守规则：
 1) 如果页面字段只是状态性复选框，例如“没有实习经历”“无实习经历”“暂无项目经历”，只有在 resumeFields 中存在明确语义等价的布尔字段时才映射；否则返回空字符串

@@ -83,6 +83,30 @@ test("normalizeCacheText strips prompt-like wrappers and volatile filled values"
   assert.equal(helpers.normalizeCacheText("工作类型*实习"), "工作类型");
 });
 
+test("repeat item indexes are part of the mapping cache signature", () => {
+  const helpers = loadCacheKeyHelpers();
+  const first = helpers.createMappingCacheKey([
+    {
+      kind: "text",
+      label: "项目名称",
+      sectionKey: "project",
+      sectionLabel: "项目经历",
+      sectionItemIndex: 0,
+    },
+  ]);
+  const second = helpers.createMappingCacheKey([
+    {
+      kind: "text",
+      label: "项目名称",
+      sectionKey: "project",
+      sectionLabel: "项目经历",
+      sectionItemIndex: 1,
+    },
+  ]);
+
+  assert.notEqual(first, second);
+});
+
 test("describeMappingCacheLookup explains same-page cache misses", () => {
   const helpers = loadCacheKeyHelpers();
 

@@ -84,6 +84,11 @@ if (!resumePrompts) {
   throw new Error("Resume prompts are not available");
 }
 
+const assetStorage = window.ResumeAssetStorage;
+if (!assetStorage) {
+  throw new Error("Resume asset storage is not available");
+}
+
 const logExport = window.ResumeLogExport;
 if (!logExport) {
   throw new Error("Resume log export is not available");
@@ -102,7 +107,7 @@ if (!contentBridge) {
 const RESUME_PROFILE_KEY = resumeStorage.keys.profile;
 const RESUME_SCHEMA_VERSION_KEY = resumeStorage.keys.schemaVersion;
 const RESUME_IMPORT_RAW_TEXT_KEY = resumeStorage.keys.rawText;
-const MAPPING_CACHE_KEY = "fieldMappingCacheV3";
+const MAPPING_CACHE_KEY = "fieldMappingCacheV8";
 
 const BUILTIN_MODEL = modelStorage.DEFAULT_MODEL;
 
@@ -749,7 +754,7 @@ function renderResumeEditor(profile) {
               )}</div>
             </div>
             ${
-              items.length > Math.max(1, Number(section.initialItems) || 1)
+              items.length > schema.getListSectionMinItems(section)
                 ? `
                   <button
                     type="button"
@@ -946,7 +951,7 @@ function createResumeNavSummary(section, stats) {
   return `${stats.filledFields}/${stats.totalFields} 项`;
 }
 
-function collectResumeProfileFromForm() {
+function collectResumeProfileFromForm({ normalize = true } = {}) {
   const nextProfile = schema.createEmptyResumeProfile();
   const controls = resumeFormHost.querySelectorAll("[data-resume-path]");
 
@@ -958,11 +963,11 @@ function collectResumeProfileFromForm() {
     );
   });
 
-  return schema.normalizeResumeProfile(nextProfile);
+  return normalize ? schema.normalizeResumeProfile(nextProfile) : nextProfile;
 }
 
-function syncResumeProfileFromForm() {
-  resumeProfile = collectResumeProfileFromForm();
+function syncResumeProfileFromForm(options) {
+  resumeProfile = collectResumeProfileFromForm(options);
   return resumeProfile;
 }
 
@@ -1022,15 +1027,15 @@ function addResumeListItem(sectionKey) {
   const section = schema.getSectionDefinition(sectionKey);
   if (!section || section.type !== "list") return;
 
-  const nextProfile = syncResumeProfileFromForm();
+  const nextProfile = syncResumeProfileFromForm({ normalize: false });
   const items = Array.isArray(nextProfile[sectionKey]) ? [...nextProfile[sectionKey]] : [];
   if (items.length >= section.slots) return;
 
   items.push(schema.createEmptyListItem(sectionKey));
-  resumeProfile = schema.normalizeResumeProfile({
+  resumeProfile = {
     ...nextProfile,
     [sectionKey]: items,
-  });
+  };
 
   collapsedResumeSections.delete(sectionKey);
   renderResumeEditor(resumeProfile);
@@ -1047,8 +1052,8 @@ function removeResumeListItem(sectionKey, itemIndex) {
   const section = schema.getSectionDefinition(sectionKey);
   if (!section || section.type !== "list") return;
 
-  const minItems = Math.max(1, Number(section.initialItems) || 1);
-  const nextProfile = syncResumeProfileFromForm();
+  const minItems = schema.getListSectionMinItems(section);
+  const nextProfile = syncResumeProfileFromForm({ normalize: false });
   const items = Array.isArray(nextProfile[sectionKey]) ? [...nextProfile[sectionKey]] : [];
 
   if (items.length <= minItems) return;
@@ -1321,13 +1326,23 @@ async function runFill(actionKey) {
     }
 
     const modelId = activeModel.id;
+    const resumeAssets = await assetStorage.getSerializableAssets();
     const response = await sendTabMessage(tab.id, {
       action: "startFill",
       modelId,
       resumeProfile,
+      resumeAssets,
       fillMode: actionConfig.fillMode,
       scope: actionConfig.scope,
     });
+
+    if (response && Number.isFinite(Number(response.fieldCount))) {
+      updateFillStats(
+        response.fieldCount || 0,
+        response.mappedCount || 0,
+        response.filledCount || 0
+      );
+    }
 
     if (!response?.success) {
       if (response?.canceled) {
@@ -1343,22 +1358,19 @@ async function runFill(actionKey) {
       throw new Error(response?.message || "填充失败");
     }
 
-    updateFillStats(
-      response.fieldCount || 0,
-      response.mappedCount || 0,
-      response.filledCount || 0
-    );
-
     fillTipEl.textContent = buildFillTipText(actionKey, response.cacheHit);
     fillTipEl.hidden = false;
 
+    const outcome = response.outcome || "success";
+    const completionLevel = outcome === "partial" ? "warning" : outcome === "no_changes" ? "info" : "success";
+    const completionStatus = outcome === "partial" ? "部分完成" : outcome === "no_changes" ? "无变更" : "完成";
     addLog(
-      "success",
-      `${actionConfig.doneLog}：识别 ${response.fieldCount} 个字段，映射 ${response.mappedCount} 个，成功填充 ${response.filledCount} 个。`
+      completionLevel,
+      response.message || `${actionConfig.doneLog}：识别 ${response.fieldCount} 个字段，映射 ${response.mappedCount} 个，成功填充 ${response.filledCount} 个。`
     );
-    updateStatus("ready", "完成");
+    updateStatus("ready", completionStatus);
     await finalizeFillSession({
-      status: "success",
+      status: outcome,
       stats: {
         fieldCount: response.fieldCount || 0,
         mappedCount: response.mappedCount || 0,
@@ -1500,6 +1512,7 @@ async function injectContentScript(tabId) {
         "shared/field-text.js",
         "shared/field-semantics.js",
         "shared/fill-runtime.js",
+        "shared/site-adapters.js",
         "shared/content-bridge.js",
         "shared/ai-client.js",
         "content.js",

@@ -192,6 +192,12 @@ test("both resume entry points use the shared local storage helper", () => {
     editorHtml.indexOf("shared/resume-storage.js") <
       editorHtml.indexOf("resume-editor.js")
   );
+  assert.ok(
+    editorHtml.indexOf("shared/profile-document.js") <
+      editorHtml.indexOf("resume-editor.js")
+  );
+  assert.match(editorHtml, /id="importResumeDocumentBtn"/);
+  assert.match(editorHtml, /id="exportResumeDocumentBtn"/);
 
   for (const source of [popupSource, editorSource]) {
     assert.match(source, /resumeStorage\.saveResumeData\(/);

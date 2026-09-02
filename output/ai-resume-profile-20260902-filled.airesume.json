@@ -1,0 +1,397 @@
+{
+  "format": "ai-resume-profile",
+  "documentVersion": 1,
+  "schemaVersion": 5,
+  "exportedAt": "2026-09-02T03:22:44.616Z",
+  "generator": {
+    "name": "AI Resume Form Filling Assistant",
+    "version": "1.2.0"
+  },
+  "profile": {
+    "personal": {
+      "fullName": "罗敬",
+      "firstName": "敬",
+      "firstNamePinyin": "jing",
+      "middleName": "",
+      "lastName": "罗",
+      "lastNamePinyin": "luo",
+      "preferredName": "",
+      "englishName": "",
+      "gender": "男",
+      "birthDate": "2002-09-08",
+      "age": "23",
+      "email": "1137227753@qq.com",
+      "alternateEmail": "",
+      "phoneCountryCode": "+86",
+      "phoneNumber": "13377450953",
+      "alternatePhone": "13243517797",
+      "wechatId": "MTuoeAry",
+      "currentCity": "重庆",
+      "currentProvince": "重庆",
+      "currentCountry": "中国",
+      "currentDistrict": "重庆市沙坪坝区",
+      "ethnicity": "汉族",
+      "nationality": "中国",
+      "citizenship": "中国",
+      "maritalStatus": "未婚",
+      "currentCompany": "",
+      "currentTitle": "",
+      "yearsOfExperience": "0",
+      "yearsOfManagement": "",
+      "highestEducationLevel": "硕士",
+      "summary": "计算机技术硕士研究生，研究方向聚焦计算机视觉、轻量化人体姿态估计与频域建模。拥有3篇第一作者论文（IEEE ICASSP 2026论文2篇、Neurocomputing论文1篇）及两段算法/软件开发实习经历，具备从数据构建、模型训练优化、效果评测到服务化部署与业务联调的完整研发经验。"
+    },
+    "contactAndLocation": {
+      "currentAddressLine1": "重庆市沙坪坝区大学城中路37号",
+      "currentAddressLine2": "",
+      "postalCode": "",
+      "hometownCity": "玉林",
+      "hometownProvince": "广西",
+      "hukouLocation": "广西玉林",
+      "emergencyContactName": "肖迎春",
+      "emergencyContactRelationship": "母亲",
+      "emergencyContactPhone": "18934862435",
+      "timezone": ""
+    },
+    "identityAndAuthorization": {
+      "personalIdType": "身份证",
+      "personalIdNumber": "450922200209084610",
+      "passportName": "",
+      "passportNumber": "",
+      "passportExpiryDate": "",
+      "politicalStatus": "预备党员",
+      "workAuthorization": "",
+      "visaStatus": "",
+      "sponsorshipNeeded": "",
+      "driversLicense": "是",
+      "securityClearance": ""
+    },
+    "onlinePresence": {
+      "linkedinUrl": "",
+      "githubUrl": "",
+      "portfolioUrl": "",
+      "websiteUrl": "",
+      "blogUrl": "",
+      "leetcodeUrl": "",
+      "otherProfileLinks": ""
+    },
+    "jobPreferences": {
+      "targetRole": "计算机视觉算法工程师 / 视频算法工程师",
+      "targetLevel": "应届生",
+      "targetDepartment": "算法研发 / 人工智能",
+      "targetIndustry": "",
+      "expectedCity": "",
+      "expectedCountry": "",
+      "preferredLocations": "",
+      "expectedSalary": "",
+      "currentCompensation": "",
+      "noticePeriod": "",
+      "availableDate": "",
+      "employmentType": "全职",
+      "willingToRelocate": "",
+      "willingToTravel": "",
+      "remotePreference": "",
+      "preferredInterviewLanguage": "中文",
+      "preferredStartTime": ""
+    },
+    "skills": {
+      "primarySkills": "视觉与视频算法：目标检测、图像分类、人体姿态估计、多目标跟踪、视频行为识别与OCR，熟悉YOLO、ConvNeXt、HRNet、X3D、ByteTrack、SegFormer等模型与算法。多模态与生成式AI：具备Qwen-VL、MiniCPM-V等视觉语言模型的多图/视频推理与效果评测经验；使用SAM3进行交互式分割与视频目标跟踪，使用FLUX、Stable Diffusion 1.5构建合成数据。工程能力：熟练使用PyTorch、OpenCV、FastAPI、ONNX Runtime、Linux、Docker与Git，具备模型推理优化、服务封装、业务系统开发、服务器部署、接口联调及问题排查能力。编程与数据：熟练Python，具备Java、Spring Boot开发基础；熟悉MySQL、达梦数据库、MinIO及常见数据结构与算法。",
+      "programmingLanguages": "Python, Java",
+      "frameworks": "Spring Boot, PyTorch, OpenCV, FastAPI, ONNX Runtime",
+      "aiTools": "Qwen-VL, MiniCPM-V, SAM3, FLUX, Stable Diffusion 1.5",
+      "cloudPlatforms": "",
+      "databases": "MySQL, 达梦数据库, MinIO",
+      "tooling": "Linux, Docker, Git",
+      "domainKnowledge": "计算机视觉、轻量化人体姿态估计、频域建模、目标检测与跟踪、视频行为识别、相机标定、空间几何与BEV",
+      "managementExperience": "",
+      "softSkills": "会主动关注AI领域的新技术和新方法，并结合科研和项目需求进行验证和应用。善于借助AI工具辅助资料检索、代码开发和问题排查，提高学习与工作效率。学习和动手能力较强，责任心强，能够快速适应新环境并推进任务落地。面对缺少成熟方案的问题，能够从需求和数据出发定位关键问题，通过实验验证和迭代优化形成可行方案。",
+      "notableAchievements": "第一作者论文3篇；相机标定项目在50个摄像头、300个测试点上实现100%覆盖，反投影误差平均0.352m；占压识别自建测试集mAP50约92%、Precision约91%，复杂背景误报率由17.5%降至8.4%；施工机械三分类F1 Score均达到93%以上。",
+      "interests": ""
+    },
+    "educations": [
+      {
+        "school": "重庆师范大学",
+        "educationType": "统招全日制",
+        "degree": "硕士",
+        "studyMode": "统招",
+        "major": "计算机技术",
+        "minor": "",
+        "faculty": "计算机与信息科学学院",
+        "className": "",
+        "studentId": "",
+        "academicSystem": "",
+        "city": "重庆",
+        "country": "中国",
+        "startDate": "2024-09",
+        "endDate": "",
+        "graduationStatus": "在读",
+        "gpa": "3.6/5.0",
+        "ranking": "",
+        "laboratory": "",
+        "researchDirection": "计算机视觉、轻量化人体姿态估计、频域建模",
+        "advisor": "",
+        "thesisTitle": "",
+        "courses": "",
+        "description": "荣获奖项：国家奖学金、一等奖学金、校级优秀团员、三好学生、科学技术先进个人"
+      },
+      {
+        "school": "桂林航天工业学院",
+        "educationType": "统招全日制",
+        "degree": "本科",
+        "studyMode": "统招",
+        "major": "软件工程",
+        "minor": "",
+        "faculty": "",
+        "className": "",
+        "studentId": "",
+        "academicSystem": "4年",
+        "city": "桂林",
+        "country": "中国",
+        "startDate": "2020-09",
+        "endDate": "2024-06",
+        "graduationStatus": "已毕业",
+        "gpa": "3.2/5.0",
+        "ranking": "",
+        "laboratory": "",
+        "researchDirection": "",
+        "advisor": "",
+        "thesisTitle": "",
+        "courses": "",
+        "description": "荣获奖项：校级优秀毕业生、校级一等奖学金、二等奖学金、团学工作奖学金、校级三好学生"
+      }
+    ],
+    "internships": [
+      {
+        "company": "重庆正大能科科技有限公司",
+        "title": "算法工程师实习生",
+        "department": "",
+        "city": "重庆",
+        "country": "中国",
+        "startDate": "2026-03",
+        "endDate": "2026-08",
+        "isCurrent": "否",
+        "description": "面向燃气管网、智慧工地与公共安全场景，参与固定监控相机标定与朝向估计、燃气管线占压识别和智慧工地安全行为监测等算法研发；负责需求分析、数据集建设、模型训练评估、多模型推理编排、服务封装及业务系统联调。",
+        "achievements": "相机标定在50个摄像头、300个测试点上实现100%覆盖，反投影误差平均0.352m；占压识别构建约1.2万张真实与合成图像训练集，自建测试集mAP50约92%、Precision约91%，复杂背景误报率由17.5%降至8.4%；施工机械静止、移动、施工三分类F1 Score均达到93%以上；完成FastAPI服务封装、华为昇腾NPU适配及生产环境部署。",
+        "technologies": "Python, PyTorch, OpenCV, YOLO, ConvNeXt, ByteTrack, PaddleOCR, SegFormer, X3D, HRNet, Qwen-VL, MiniCPM-V, SAM3, FLUX, FastAPI, ONNX Runtime, Docker, 华为昇腾NPU"
+      },
+      {
+        "company": "桂林天算网络科技有限公司",
+        "title": "后端开发实习生",
+        "department": "",
+        "city": "桂林",
+        "country": "中国",
+        "startDate": "2022-08",
+        "endDate": "2023-06",
+        "isCurrent": "否",
+        "description": "负责天算商城及智慧后勤管理系统核心模块开发，基于Spring Boot、MySQL完成接口与数据层设计；作为智慧后勤系统项目负责人，对接校内多部门需求，组织代码评审、测试和云服务器部署。",
+        "achievements": "系统上线后将师生报修平均处理时长由48小时缩短至16小时以内。",
+        "technologies": "Java, Spring Boot, MySQL, Linux, Git, 云服务器部署"
+      }
+    ],
+    "workExperiences": [],
+    "projects": [
+      {
+        "name": "重庆市区固定监控相机标定与朝向估计系统",
+        "role": "核心算法开发",
+        "organization": "重庆正大能科科技有限公司",
+        "url": "",
+        "repoUrl": "",
+        "demoUrl": "",
+        "startDate": "2026-03",
+        "endDate": "2026-05",
+        "description": "面向数字孪生与空间定位需求，构建固定监控相机内外参标定及免标定yaw估计方案，实现监控图像、无人机正射影像与地图坐标之间的空间映射。技术栈：OpenCV、DA2、SAM、VGGT-Ω、GeoCalib、RANSAC、PnP、BEV、OSM/DOM。1）相机标定：基于直立杆头脚像素、杆高及RTK坐标构建3D–2D对应关系，设计高精度主解与多PnP求解器鲁棒兜底架构，结合K-Fold参数选择和LM精修，在50个摄像头、300个测试点上实现100%覆盖，反投影误差平均0.352m、中位0.230m。2）朝向估计：在仅输入单幅监控图像与相机GPS的条件下，自动估计焦距与俯仰角，并将单目深度和建筑外墙分割结果还原为相机系点云。通过RANSAC墙线拟合、BEV逐角度匹配及左右一致性约束完成世界系yaw估计，引入split_spread门控在点云与墙线分支间动态择优，使建筑场景yaw误差中位由30.0°降至25.3°。3）双场景适配：针对建筑密集区与开阔道路设计双分支方案，建筑场景将可见外墙几何与无人机DOM建筑边缘进行BEV对齐，道路场景将DA2生成的“方位—深度”直方图与OSM道路“方位—距离”结构进行匹配。最终建筑物与道路场景yaw误差中位分别为25.3°和27.0°，误差小于25°的机位占比均达到50%。",
+        "highlights": "50个摄像头、300个测试点实现100%覆盖；反投影误差平均0.352m、中位0.230m；建筑场景yaw误差中位由30.0°降至25.3°。",
+        "technologies": "OpenCV, DA2, SAM, VGGT-Ω, GeoCalib, RANSAC, PnP, BEV, OSM/DOM"
+      },
+      {
+        "name": "重庆市住建委燃气管线占压识别系统",
+        "role": "核心算法开发",
+        "organization": "重庆正大能科科技有限公司",
+        "url": "",
+        "repoUrl": "",
+        "demoUrl": "",
+        "startDate": "2026-05",
+        "endDate": "2026-07",
+        "description": "面向燃气管网监控平台，识别施工机械、危险标识、堆积物及短时施工设施等6类风险目标，融合空间位置、车辆载荷状态与驻留时长，实现占压事件识别及4级风险分级。技术栈：YOLO、ConvNeXt、ByteTrack、PaddleOCR、SegFormer、FastAPI、FLUX、Qwen-VL。1）算法方案：构建检测、分割、分类、跟踪与多模态复核协同推理链路，引入视觉大模型对低置信度及复杂场景结果进行二次研判，通过空间位置、载货状态及驻留时间完成占压风险分级，并过滤瞬时经过和重复告警。2）数据优化：针对堆积物真实样本稀缺、形态与尺度差异较大的问题，使用FLUX生成稀缺监控场景样本，结合Qwen-VL辅助样本筛选、SAM3辅助分割标注，构建约1.2万张真实与合成图像训练集，并通过困难样本挖掘和线上误检回流完成3轮模型迭代；自建测试集mAP50约92%，Precision约91%，复杂背景误报率由17.5%降至8.4%。3）工程化部署：完成多模型推理编排、FastAPI服务封装及前后端业务联调，将模型转换为OM格式并适配华为昇腾NPU，接入覆盖约3万路摄像头资源的监控平台，实现识别结果、风险等级及告警信息的结构化输出。",
+        "highlights": "构建约1.2万张真实与合成图像训练集；自建测试集mAP50约92%、Precision约91%；复杂背景误报率由17.5%降至8.4%；接入约3万路摄像头资源平台。",
+        "technologies": "YOLO, ConvNeXt, ByteTrack, PaddleOCR, SegFormer, FastAPI, FLUX, Qwen-VL"
+      },
+      {
+        "name": "重庆梁平区智慧工地安全行为监测系统",
+        "role": "核心算法开发",
+        "organization": "重庆正大能科科技有限公司",
+        "url": "",
+        "repoUrl": "",
+        "demoUrl": "",
+        "startDate": "2026-07",
+        "endDate": "2026-08",
+        "description": "面向燃气场站及管线周边施工监管场景，构建覆盖人员防护、异常行为、施工状态、车辆监管、消防安全及环境风险的智能视频分析系统，实现10余类安全事件识别与结构化告警。技术栈：X3D、YOLO-Seg、HRNet、MiniCPM-V、SAM3、SlowFast、PyTorch、FastAPI。1）视频时序分析：基于X3D与ByteTrack构建目标检测、跨帧关联与多帧状态判定链路，面向施工机械及人员行为开展时序分析；实现施工机械静止、移动、施工三分类，各状态F1 Score均达到93%以上，并完成人员摔倒、奔跑、徘徊滞留等异常行为识别。2）多模态事件研判：评估Qwen-VL、MiniCPM-V在施工状态和人员行为理解中的应用效果，设计场景提示词、类别判定规则及结构化输出格式，将检测结果、时序信息与视觉大模型判断进行融合，用于复杂事件和低置信度结果的辅助复核。3）系统集成与落地：完成HLS视频解析、多模型推理编排、FastAPI服务封装及前后端联调，统一目标框、行为状态、证据图和告警信息的输出格式，推动算法服务在测试及生产环境中部署应用。",
+        "highlights": "施工机械静止、移动、施工三分类F1 Score均达到93%以上；实现10余类安全事件识别与结构化告警，并完成算法服务部署联调。",
+        "technologies": "X3D, YOLO-Seg, HRNet, MiniCPM-V, SAM3, SlowFast, PyTorch, FastAPI"
+      }
+    ],
+    "campusExperiences": [
+      {
+        "category": "学生组织",
+        "organization": "重庆师范大学",
+        "role": "研究生会科创部部长",
+        "startDate": "2025-09",
+        "endDate": "2026-06",
+        "isCurrent": "否",
+        "description": "统筹学术活动月5项学术活动与竞赛的策划、宣传、报名及现场执行，协调各部门推进活动落地；负责研究生科研创新项目材料的收集、审核与汇总，并参与多场学术会议的组织与保障工作。",
+        "achievements": ""
+      },
+      {
+        "category": "学生组织",
+        "organization": "桂林航天工业学院",
+        "role": "软件工程实验室负责人",
+        "startDate": "2022-06",
+        "endDate": "2024-06",
+        "isCurrent": "否",
+        "description": "担任校园智慧后勤系统项目负责人，带领团队参与学校的数字化建设，负责学校项目的规划、系统平台运维及实验室管理；组织承办10+场校级比赛，单场参与规模200人以上。",
+        "achievements": ""
+      }
+    ],
+    "certificates": [
+      {
+        "name": "软件设计师",
+        "issuer": "",
+        "issueDate": "",
+        "expiryDate": "",
+        "score": "",
+        "credentialId": "",
+        "credentialUrl": ""
+      }
+    ],
+    "languages": [],
+    "awards": [
+      {
+        "date": "",
+        "name": "国家奖学金",
+        "type": "奖学金",
+        "level": "国家级",
+        "rank": "",
+        "issuer": "",
+        "details": "硕士研究生阶段获得。"
+      },
+      {
+        "date": "",
+        "name": "第二十八届中国机器人及人工智能大赛（智能产线应用场景）",
+        "type": "竞赛",
+        "level": "国家级",
+        "rank": "全国二等奖",
+        "issuer": "中国机器人及人工智能大赛组委会",
+        "details": ""
+      },
+      {
+        "date": "",
+        "name": "第十四届蓝桥杯全国软件和信息技术专业人才大赛B组",
+        "type": "竞赛",
+        "level": "国家级",
+        "rank": "全国三等奖",
+        "issuer": "蓝桥杯大赛组委会",
+        "details": ""
+      },
+      {
+        "date": "",
+        "name": "第七届广西大学生程序设计竞赛（CCPC区域赛）",
+        "type": "竞赛",
+        "level": "省级",
+        "rank": "季军 / 金奖",
+        "issuer": "",
+        "details": ""
+      },
+      {
+        "date": "",
+        "name": "第十一届“挑战杯”",
+        "type": "竞赛",
+        "level": "省级",
+        "rank": "三等奖",
+        "issuer": "",
+        "details": ""
+      },
+      {
+        "date": "",
+        "name": "广西大学生计算机设计大赛",
+        "type": "竞赛",
+        "level": "省级",
+        "rank": "三等奖",
+        "issuer": "",
+        "details": ""
+      },
+      {
+        "date": "",
+        "name": "中国高校计算机大赛-团体程序设计天梯赛",
+        "type": "竞赛",
+        "level": "省级",
+        "rank": "二等奖",
+        "issuer": "",
+        "details": ""
+      },
+      {
+        "date": "",
+        "name": "校级优秀毕业生",
+        "type": "荣誉称号",
+        "level": "校级",
+        "rank": "",
+        "issuer": "桂林航天工业学院",
+        "details": "本科阶段获得。"
+      }
+    ],
+    "patents": [
+      {
+        "publicationDate": "",
+        "name": "计算机软件著作权（共3项）",
+        "number": "",
+        "type": "计算机软件著作权",
+        "status": "已取得",
+        "role": "",
+        "details": "简历载明拥有3项软件著作权；现有材料未提供具体名称、登记号及取得日期，待后续补充。"
+      }
+    ],
+    "publications": [
+      {
+        "publicationDate": "2026",
+        "title": "A Lightweight Network with Adaptive Context and Frequency-Spatial Synergy for Human Pose Estimation",
+        "venue": "IEEE ICASSP 2026",
+        "authors": "Jing Luo, Yanxia Wang, Xuping Liang, Wenwen Li",
+        "role": "第一作者",
+        "impactFactor": "",
+        "url": "",
+        "details": "提出轻量级人体姿态估计网络AFSPose，通过自适应上下文增强、共享频域注意力与频率-空间协同注意力，在可控计算开销下增强复杂场景中的多尺度上下文与高频细节表征。"
+      },
+      {
+        "publicationDate": "2026",
+        "title": "BDRNet: Bidirectional Decomposed and Recalibrated Lightweight Network for Human Pose Estimation",
+        "venue": "IEEE ICASSP 2026",
+        "authors": "Jing Luo, Yanxia Wang, Xuping Liang, Wenwen Li",
+        "role": "第一作者",
+        "impactFactor": "",
+        "url": "",
+        "details": "提出轻量级跨尺度注意力融合网络BDRNet，设计双向分解空间注意力与多尺度重校准注意力模块，兼顾复杂场景下的局部细节、全局依赖与计算效率。"
+      },
+      {
+        "publicationDate": "2026-07-06",
+        "title": "Dynamic context and local frequency gating for lightweight human pose estimation",
+        "venue": "Neurocomputing 700 (2026) 134410",
+        "authors": "Jing Luo, Yanxia Wang, Xuping Liang, Wenwen Li, Siqin Chen",
+        "role": "第一作者",
+        "impactFactor": "6.7",
+        "url": "https://doi.org/10.1016/j.neucom.2026.134410",
+        "details": "提出轻量级人体姿态估计网络DFGNet，结合自适应多尺度上下文、局部频域门控交互和高斯增强注意力；DFGNet-W32在MSCOCO val2017与CrowdPose test上分别达到72.4% AP和62.8% AP，仅含2.42M参数与2.4 GFLOPs。"
+      }
+    ],
+    "additional": {
+      "awards": "国家奖学金、一等奖学金、校级优秀团员、三好学生、科学技术先进个人、校级优秀毕业生、校级一等奖学金、二等奖学金、团学工作奖学金、校级三好学生；第二十八届中国机器人及人工智能大赛（智能产线应用场景）全国二等奖；第十四届蓝桥杯B组全国三等奖；第七届广西大学生程序设计竞赛（CCPC区域赛）季军/金奖；第十一届“挑战杯”三等奖；广西大学生计算机设计大赛三等奖；中国高校计算机大赛-团体程序设计天梯赛省赛二等奖。",
+      "publications": "第一作者论文3篇：IEEE ICASSP 2026论文《A Lightweight Network with Adaptive Context and Frequency-Spatial Synergy for Human Pose Estimation》；IEEE ICASSP 2026论文《BDRNet: Bidirectional Decomposed and Recalibrated Lightweight Network for Human Pose Estimation》；Neurocomputing论文《Dynamic context and local frequency gating for lightweight human pose estimation》（DOI: 10.1016/j.neucom.2026.134410）。",
+      "patents": "拥有3项计算机软件著作权；现有材料未提供具体名称、登记号及取得日期。",
+      "volunteerExperience": "",
+      "competitions": "第二十八届中国机器人及人工智能大赛全国二等奖；第十四届蓝桥杯B组全国三等奖；第七届广西大学生程序设计竞赛季军/金奖；第十一届“挑战杯”三等奖；广西大学生计算机设计大赛三等奖；中国高校计算机大赛-团体程序设计天梯赛省赛二等奖。",
+      "openSourceContributions": "",
+      "references": "",
+      "coverLetterHighlights": "计算机技术硕士研究生，聚焦计算机视觉与轻量化人体姿态估计，拥有3篇第一作者论文。具备算法研究与工程落地双重经验：能够从数据构建、模型训练和评测迭代推进到FastAPI服务化、昇腾NPU适配及业务联调；在相机标定、占压识别和智慧工地视频理解项目中形成了可量化成果。",
+      "customNotes": "应届生，无正式全职工作经历；两段公司经历均按实习经历填写，不要映射到正式工作经历。论文与奖项中材料未提供的日期、编号等字段保持空白。"
+    },
+    "customFields": []
+  }
+}

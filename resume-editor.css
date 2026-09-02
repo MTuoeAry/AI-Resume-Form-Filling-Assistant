@@ -98,6 +98,54 @@ body.resume-editor-page {
   border-left-color: var(--warning);
 }
 
+/* ─── Portable Profile Document ─────────────────────────────────────────── */
+.editor-document-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.editor-document-copy { min-width: 0; }
+.editor-document-title {
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 650;
+}
+.editor-document-desc {
+  max-width: 680px;
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.editor-document-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.document-mode-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.document-mode-select {
+  height: 38px;
+  min-width: 132px;
+  padding: 0 30px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-main);
+  font-size: 12px;
+}
+
 /* ─── Main Layout ────────────────────────────────────────────────────────── */
 .editor-main {
   display: flex;
@@ -392,6 +440,45 @@ body.resume-editor-page {
 }
 
 /* ─── Import Section ─────────────────────────────────────────────────────── */
+.editor-asset-section {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px 20px 20px;
+}
+
+.asset-card {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.asset-card-copy { min-width: 0; }
+.asset-card-title { color: var(--text-main); font-size: 13px; font-weight: 600; }
+.asset-card-meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asset-card-actions { display: flex; align-items: center; gap: 12px; }
+.asset-choose-btn { cursor: pointer; }
+.asset-remove-btn { color: var(--danger); }
+
 .editor-import-section {
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -467,9 +554,20 @@ body.resume-editor-page {
     flex: 1;
   }
 
+  .editor-document-section {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .editor-document-actions {
+    flex-wrap: wrap;
+  }
+
   .resume-editor-layout-wide {
     grid-template-columns: 1fr;
   }
+
+  .asset-grid { grid-template-columns: 1fr; }
 
   .resume-nav {
     position: static;

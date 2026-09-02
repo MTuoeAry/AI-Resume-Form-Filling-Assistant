@@ -25,10 +25,39 @@
 
       <main class="editor-main">
         <div class="tip" id="pageStatus">正在加载标准简历...</div>
+
+        <section class="editor-document-section">
+          <div class="editor-document-copy">
+            <div class="editor-document-title">便携简历文档</div>
+            <div class="editor-document-desc">导出为 .airesume.json，可放入同步盘或移动硬盘并在其他电脑导入。文档不包含附件、模型配置或 API Key。</div>
+          </div>
+          <div class="editor-document-actions">
+            <label class="document-mode-label" for="resumeDocumentImportMode">导入方式</label>
+            <select id="resumeDocumentImportMode" class="document-mode-select">
+              <option value="merge">合并非空字段</option>
+              <option value="replace">完全替换</option>
+            </select>
+            <button class="btn btn-outline" id="importResumeDocumentBtn" type="button">导入文档</button>
+            <button class="btn btn-outline" id="exportResumeDocumentBtn" type="button">导出文档</button>
+            <input id="resumeDocumentFile" type="file" accept=".json,.airesume.json,application/json" hidden />
+          </div>
+        </section>
+
         <div class="resume-editor-layout resume-editor-layout-wide">
           <aside class="resume-nav" id="resumeNav"></aside>
           <div class="resume-form-host" id="resumeFormHost"></div>
         </div>
+
+        <section class="editor-asset-section">
+          <div class="editor-import-header">
+            <div class="editor-import-header-icon">📎</div>
+            <div class="editor-import-header-copy">
+              <div class="editor-import-title">常用申请附件</div>
+              <div class="editor-import-desc">文件仅保存在本机扩展数据库；填表时匹配个人照片、简历附件和相关作品，不会自动提交。</div>
+            </div>
+          </div>
+          <div class="asset-grid" id="assetGrid"></div>
+        </section>
 
         <div class="editor-import-section">
           <div class="editor-import-header">
@@ -60,6 +89,8 @@
     <script src="libs/pdfjs/pdf.min.js"></script>
     <script src="shared/resume-schema.js"></script>
     <script src="shared/resume-storage.js"></script>
+    <script src="shared/profile-document.js"></script>
+    <script src="shared/asset-storage.js"></script>
     <script src="shared/model-storage.js"></script>
     <script src="shared/ai-client.js"></script>
     <script src="shared/resume-prompts.js"></script>

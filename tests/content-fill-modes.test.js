@@ -20,6 +20,7 @@ function loadContentHelpers() {
   );
 
   const snippet = `
+    function normalizeText(value) { return String(value || "").replace(/\\s+/g, " ").trim(); }
     ${extractFunction(
       source,
       "function normalizeSelectionRect(startPoint, endPoint) {",
@@ -39,17 +40,32 @@ function loadContentHelpers() {
       normalizeSelectionRect,
       rectsIntersect,
       hasExistingFieldValue,
+      refreshRuntimeElement,
     };
   `;
 
+  const currentElement = {
+    value: "already filled",
+    readOnly: false,
+    getAttribute: () => "",
+    closest: () => null,
+    parentElement: null,
+  };
   const context = {
     module: { exports: {} },
     exports: {},
+    document: {
+      getElementById: () => currentElement,
+      querySelector: () => null,
+    },
+    cssEscape: (value) => String(value || ""),
+    getCustomPickerRoot: () => null,
+    inferDatePickerPrecision: () => "",
   };
 
   vm.createContext(context);
   vm.runInContext(snippet, context);
-  return context.module.exports;
+  return { ...context.module.exports, currentElement };
 }
 
 function loadCheckboxFillHelper() {
@@ -62,6 +78,7 @@ function loadCheckboxFillHelper() {
   const snippet = `
     function normalizeCheckboxCandidates(value) { return Array.isArray(value) ? value : String(value).split(","); }
     function matchesAnyCandidate(label, candidates) { return candidates.includes(label); }
+    function hasExistingFieldValue(runtime) { return Boolean(String(runtime?.el?.value || "").trim()); }
     const checks = [];
     async function safeCheck(element, checked) { checks.push({ element, checked }); element.checked = checked; return true; }
     ${source.slice(start, end)}
@@ -144,6 +161,39 @@ test("hasExistingFieldValue detects filled controls for incremental mode", () =>
     }),
     true
   );
+  assert.equal(
+    helpers.hasExistingFieldValue({
+      kind: "custom_picker",
+      el: { value: "" },
+      pickerRoot: {
+        className: "picker ihr_base_picker--selected",
+        getAttribute: () => "",
+        querySelector: () => null,
+      },
+    }),
+    true
+  );
+  assert.equal(
+    helpers.hasExistingFieldValue({
+      kind: "custom_picker",
+      el: { value: "" },
+      pickerRoot: {
+        className: "picker",
+        getAttribute: () => "",
+        querySelector: () => null,
+      },
+    }),
+    false
+  );
+});
+
+test("refreshRuntimeElement follows framework rerenders before incremental checks", () => {
+  const helpers = loadContentHelpers();
+  const runtime = { kind: "text", id: "stable-field", el: { value: "" } };
+
+  helpers.refreshRuntimeElement(runtime);
+  assert.equal(runtime.el, helpers.currentElement);
+  assert.equal(helpers.hasExistingFieldValue(runtime), true);
 });
 
 test("overwrite checkbox filling clears options outside the desired set", async () => {
@@ -165,4 +215,17 @@ test("overwrite checkbox filling clears options outside the desired set", async 
   assert.equal(result.filled, true);
   assert.equal(first.checked, true);
   assert.equal(second.checked, false);
+});
+
+test("fillOne has a defensive no-overwrite guard in incremental mode", async () => {
+  const helpers = loadCheckboxFillHelper();
+  const result = await helpers.fillOne(
+    { kind: "text", el: { value: "existing user value" } },
+    "replacement",
+    { overwrite: false }
+  );
+
+  assert.equal(result.filled, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.message, "字段已有内容，增量模式下不覆盖");
 });

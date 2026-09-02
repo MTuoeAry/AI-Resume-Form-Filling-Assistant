@@ -33,6 +33,7 @@ test("resume schema exposes campus recruiting education and experience fields", 
   assert.ok(catalog.some((field) => field.path === "educations.0.advisor"));
   assert.ok(catalog.some((field) => field.path === "internships.0.company"));
   assert.ok(catalog.some((field) => field.path === "campusExperiences.0.organization"));
+  assert.ok(catalog.some((field) => field.path === "publications.0.impactFactor"));
 
   assert.ok(Array.isArray(template.internships));
   assert.ok(Array.isArray(template.campusExperiences));
@@ -124,4 +125,125 @@ test("resume schema preserves flexible date precision and legacy aliases", () =>
   assert.equal(normalized.educations[0].academicSystem, "2年及以上");
   assert.equal(normalized.educations[0].startDate, "2021-09");
   assert.equal(normalized.educations[0].endDate, "2025-06");
+});
+
+test("legacy project responsibility aliases normalize into role, not description", () => {
+  const schema = loadResumeSchema();
+  const normalized = schema.normalizeResumeProfile({
+    projects: [
+      {
+        projectDuty: "核心算法开发",
+        projectDescription: "面向城市级施工监管场景建设智能分析系统",
+      },
+    ],
+  });
+
+  assert.equal(normalized.projects[0].role, "核心算法开发");
+  assert.equal(
+    normalized.projects[0].description,
+    "面向城市级施工监管场景建设智能分析系统"
+  );
+});
+
+test("resume schema v5 exposes structured recruiting records and dynamic custom fields", () => {
+  const schema = loadResumeSchema();
+  const catalog = schema.getFieldCatalog({ mode: "max" });
+
+  assert.equal(schema.version, 5);
+  assert.ok(catalog.some((field) => field.path === "awards.0.name"));
+  assert.ok(catalog.some((field) => field.path === "patents.0.number"));
+  assert.ok(catalog.some((field) => field.path === "publications.0.title"));
+  assert.ok(catalog.some((field) => field.path === "customFields.0.value"));
+  assert.equal(catalog.some((field) => field.path === "customFields.0.label"), false);
+
+  const normalized = schema.normalizeResumeProfile({
+    additional: {
+      awards: "全国大学生数学建模竞赛一等奖",
+      patents: "一种智能调度方法，CN123456",
+      publications: "Efficient Scheduling, AAAI 2026",
+    },
+    customFields: [
+      { group: "美的补充", label: "外语等级", aliases: "英语等级, CET", value: "CET-6" },
+    ],
+  });
+  assert.equal(normalized.awards[0].name, "全国大学生数学建模竞赛一等奖");
+  assert.equal(normalized.patents[0].name, "一种智能调度方法，CN123456");
+  assert.equal(normalized.publications[0].title, "Efficient Scheduling, AAAI 2026");
+
+  const dynamic = schema
+    .getCatalogWithValues(normalized)
+    .find((field) => field.path === "customFields.0.value");
+  assert.equal(dynamic.label, "外语等级");
+  assert.equal(dynamic.sectionLabel, "美的补充");
+  assert.deepEqual(Array.from(dynamic.aliases), ["英语等级", "CET"]);
+  assert.equal(dynamic.hasValue, true);
+});
+
+test("explicit empty structured lists override legacy summary text", () => {
+  const schema = loadResumeSchema();
+  const normalized = schema.normalizeResumeProfile({
+    awards: [],
+    patents: [],
+    publications: [],
+    additional: {
+      awards: "旧版奖项汇总",
+      patents: "旧版专利汇总",
+      publications: "旧版论文汇总",
+    },
+  });
+
+  assert.deepEqual(Array.from(normalized.awards), []);
+  assert.deepEqual(Array.from(normalized.patents), []);
+  assert.deepEqual(Array.from(normalized.publications), []);
+});
+
+test("every repeatable resume section allows zero items", () => {
+  const schema = loadResumeSchema();
+  const empty = schema.createEmptyResumeProfile();
+  const listSections = schema.sections.filter((section) => section.type === "list");
+
+  for (const section of listSections) {
+    const normalized = schema.normalizeResumeProfile({ [section.key]: [] });
+    const legacyEmptySlot = schema.normalizeResumeProfile({
+      [section.key]: [{}],
+    });
+
+    assert.equal(section.initialItems, 0, `${section.key} should start empty`);
+    assert.equal(
+      schema.getListSectionMinItems(section),
+      0,
+      `${section.key} should be removable to zero`
+    );
+    assert.deepEqual(Array.from(empty[section.key]), []);
+    assert.deepEqual(Array.from(normalized[section.key]), []);
+    assert.deepEqual(Array.from(legacyEmptySlot[section.key]), []);
+  }
+});
+
+test("obviously misclassified internships migrate out of work experiences", () => {
+  const schema = loadResumeSchema();
+  const normalized = schema.normalizeResumeProfile({
+    internships: [],
+    workExperiences: [
+      {
+        company: "某科技公司",
+        title: "后端开发实习生",
+        employmentType: "实习",
+        startDate: "2025-07",
+        endDate: "2025-09",
+        description: "负责接口开发",
+      },
+      {
+        company: "正式工作单位",
+        title: "软件工程师",
+        employmentType: "全职",
+      },
+    ],
+  });
+
+  assert.equal(normalized.internships.length, 1);
+  assert.equal(normalized.internships[0].company, "某科技公司");
+  assert.equal(normalized.internships[0].title, "后端开发实习生");
+  assert.equal(normalized.workExperiences.length, 1);
+  assert.equal(normalized.workExperiences[0].company, "正式工作单位");
 });

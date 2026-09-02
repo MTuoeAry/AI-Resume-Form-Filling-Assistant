@@ -47,8 +47,11 @@
     return;
   }
 
+  const siteAdapters = window.ResumeSiteAdapters || null;
+  const activeSiteAdapter = siteAdapters?.getActiveAdapter?.(location) || null;
+
   const EXT_TAG = "[简历填表助手]";
-  const MAPPING_CACHE_KEY = "fieldMappingCacheV3";
+  const MAPPING_CACHE_KEY = "fieldMappingCacheV8";
   const CONTROL_SELECTOR =
     'input, textarea, select, button, option, svg, path, style, script, noscript, [contenteditable="true"], [contenteditable=""], [aria-hidden="true"]';
   const LABEL_LIKE_SELECTOR =
@@ -65,6 +68,8 @@
   const DEEP_SCAN_INITIAL_DELAY = 250;
   const DEEP_SCAN_POLL_TIMEOUT = 1200;
   const DEEP_SCAN_MAX_CLICKS = 20;
+  const REPEAT_SECTION_MAX_CLICKS = 20;
+  const REPEAT_SECTION_ITEM_CAP = 8;
   const DEEP_SCAN_EXPAND_KEYWORDS = [
     "展开",
     "展开全部",
@@ -192,6 +197,8 @@
       }
 
       if (scope === "page") {
+        sendLog("info", "正在按简历内容准备可重复经历区块...");
+        await ensureRepeatableSections(resumeProfile);
         sendLog("info", "正在探索页面上的可展开区块...");
         await triggerExpandableSections(resumeProfile);
       }
@@ -249,24 +256,52 @@
           `已识别 ${lastFieldCount} 个字段，正在调用 AI 建立字段映射...`
         );
 
-        const promptPayload = buildFieldMappingPayload(scan.fields, resumeProfile);
-        const aiText = await aiClient.callAI(
-          modelId,
-          JSON.stringify(promptPayload),
-          "field_mapping"
+        const localMappings = normalizeMappings([], scan.fields);
+        const locallyMappedIds = new Set(
+          localMappings
+            .filter((mapping) => Boolean(mapping.resumePath))
+            .map((mapping) => String(mapping.fieldId))
         );
-        const parsed = parseJsonFromAiText(aiText);
-        mappings = normalizeMappings(parsed?.mappings, scan.fields);
+        const fieldsForAI = scan.fields.filter(
+          (field) => !locallyMappedIds.has(String(field.fieldId))
+        );
+        let shouldCacheMappings = true;
 
-        await saveMappingCacheEntry(cacheKey, {
-          updatedAt: Date.now(),
-          mappings,
-          host: location.host,
-          path: location.pathname,
-          signature: cacheSignature,
-        });
+        if (fieldsForAI.length === 0) {
+          mappings = localMappings;
+          sendLog("success", "全部字段已通过本地结构化规则完成映射，无需调用 AI。");
+        } else {
+          const promptPayload = buildFieldMappingPayload(fieldsForAI, resumeProfile);
+          const aiText = await aiClient.callAI(
+            modelId,
+            JSON.stringify(promptPayload),
+            "field_mapping"
+          );
 
-        sendLog("success", "字段映射已生成，并已写入本地缓存。");
+          try {
+            const parsed = parseJsonFromAiText(aiText);
+            const rawMappings = Array.isArray(parsed) ? parsed : parsed?.mappings;
+            mappings = normalizeMappings(rawMappings, scan.fields);
+          } catch (parseError) {
+            mappings = localMappings;
+            shouldCacheMappings = false;
+            sendLog(
+              "warning",
+              `AI 映射结果解析失败，已降级使用本地结构化映射继续填写：${parseError?.message || "返回格式错误"}`
+            );
+          }
+        }
+
+        if (shouldCacheMappings) {
+          await saveMappingCacheEntry(cacheKey, {
+            updatedAt: Date.now(),
+            mappings,
+            host: location.host,
+            path: location.pathname,
+            signature: cacheSignature,
+          });
+          sendLog("success", "字段映射已生成，并已写入本地缓存。");
+        }
       }
 
       const mappingById = new Map();
@@ -276,6 +311,16 @@
       }
 
       for (const field of scan.fields) {
+        if (field.kind === "file") {
+          const asset = findMatchingResumeAsset(field, request.resumeAssets);
+          sendLog(
+            asset ? "info" : "warning",
+            asset
+              ? `${field.label || "文件上传"}：已匹配本机附件`
+              : `${field.label || "文件上传"}：没有匹配的本机附件`
+          );
+          continue;
+        }
         const mapping = mappingById.get(field.fieldId) || {
           fieldId: field.fieldId,
           resumePath: "",
@@ -291,9 +336,13 @@
         );
       }
 
-      lastMappedCount = Array.from(mappingById.values()).filter((item) =>
-        Boolean(String(item.resumePath || "").trim())
+      const mappedFileCount = scan.fields.filter(
+        (field) => field.kind === "file" && findMatchingResumeAsset(field, request.resumeAssets)
       ).length;
+      lastMappedCount =
+        Array.from(mappingById.values()).filter((item) =>
+          Boolean(String(item.resumePath || "").trim())
+        ).length + mappedFileCount;
 
       sendStats(lastFieldCount, lastMappedCount, 0);
       sendLog(
@@ -304,9 +353,41 @@
       );
 
       let filledCount = 0;
+      let attemptedCount = 0;
+      let failedCount = 0;
 
       for (const field of scan.fields) {
         const mapping = mappingById.get(field.fieldId);
+        const runtime = fieldRuntimeMap.get(field.fieldId);
+        refreshRuntimeElement(runtime);
+
+        if (runtime?.kind === "file") {
+          const asset = findMatchingResumeAsset(field, request.resumeAssets);
+          if (!asset) {
+            sendLog("warning", `${field.label || "文件上传"}：未配置匹配的本机附件，已跳过`);
+            continue;
+          }
+          if (fillMode === "incremental" && hasExistingFieldValue(runtime)) {
+            sendLog("warning", `${field.label || "文件上传"}：已有文件，增量模式下不覆盖`);
+            continue;
+          }
+
+          attemptedCount += 1;
+          const fillResult = await fillOne(runtime, asset, {
+            overwrite: fillMode !== "incremental",
+          });
+          sendLog(
+            fillResult.filled ? "success" : "warning",
+            `${field.label || "文件上传"}：${fillResult.filled ? "已选择本机附件" : fillResult.message}`
+          );
+          if (fillResult.filled) {
+            filledCount += 1;
+          } else {
+            failedCount += 1;
+          }
+          continue;
+        }
+
         if (!mapping?.resumePath) {
           sendLog(
             "warning",
@@ -321,7 +402,6 @@
           continue;
         }
 
-        const runtime = fieldRuntimeMap.get(field.fieldId);
         if (fillMode === "incremental" && hasExistingFieldValue(runtime)) {
           sendLog(
             "warning",
@@ -358,6 +438,7 @@
           continue;
         }
 
+        attemptedCount += 1;
         const fillResult = await fillOne(runtime, finalValue, { overwrite: fillMode !== "incremental" });
         sendLog(
           fillResult.filled ? "success" : "warning",
@@ -371,21 +452,41 @@
         );
         if (fillResult.filled) {
           filledCount += 1;
+        } else {
+          failedCount += 1;
         }
       }
 
       lastFilledCount = filledCount;
       sendStats(lastFieldCount, lastMappedCount, lastFilledCount);
+      const outcome =
+        filledCount > 0
+          ? failedCount > 0
+            ? "partial"
+            : "success"
+          : attemptedCount > 0
+            ? "failed"
+            : "no_changes";
+      const outcomeMessage =
+        outcome === "failed"
+          ? `填充失败：尝试写入 ${attemptedCount} 个字段，但没有任何字段成功。`
+          : outcome === "no_changes"
+            ? "本次没有写入任何字段：字段可能已有内容，或标准简历中没有对应值。"
+            : `填充完成：映射 ${lastMappedCount}/${lastFieldCount} 个字段，成功填充 ${lastFilledCount} 个。请检查后手动提交。`;
       sendLog(
-        "success",
-        `填充完成：映射 ${lastMappedCount}/${lastFieldCount} 个字段，成功填充 ${lastFilledCount} 个。请检查后手动提交。`
+        outcome === "failed" ? "error" : outcome === "partial" ? "warning" : outcome === "no_changes" ? "info" : "success",
+        outcomeMessage
       );
 
       return {
-        success: true,
+        success: outcome !== "failed",
+        outcome,
+        message: outcomeMessage,
         fieldCount: lastFieldCount,
         mappedCount: lastMappedCount,
         filledCount: lastFilledCount,
+        attemptedCount,
+        failedCount,
         cacheHit,
       };
     } finally {
@@ -397,7 +498,7 @@
     return String(value || "")
       .toLowerCase()
       .replace(/\s+/g, "")
-      .replace(/[＊*]+$/g, "")
+      .replace(/[＊*]/g, "")
       .trim();
   }
 
@@ -563,6 +664,270 @@
     });
   }
 
+  function getMeaningfulProfileItems(profile, sectionKey) {
+    const items = Array.isArray(profile?.[sectionKey]) ? profile[sectionKey] : [];
+    return items.filter((item) => {
+      if (!item || typeof item !== "object") {
+        return Boolean(String(item || "").trim());
+      }
+      return Object.values(item).some((value) => {
+        if (Array.isArray(value)) return value.some((entry) => String(entry || "").trim());
+        return Boolean(String(value || "").trim());
+      });
+    });
+  }
+
+  function isSafeRepeatTrigger(el, expectedTexts) {
+    if (!el || !isVisible(el)) return false;
+    if (el.disabled || el.getAttribute?.("aria-disabled") === "true") return false;
+    if (String(el.getAttribute?.("type") || "").toLowerCase() === "submit") return false;
+
+    const text = getDeepScanText(el);
+    return (expectedTexts || []).some(
+      (expectedText) => text === normalizeDeepScanText(expectedText)
+    );
+  }
+
+  function findRepeatSectionTrigger(rule) {
+    const selector =
+      activeSiteAdapter?.repeatTriggerSelector ||
+      "button:not([type='submit']),[role='button'],a,[class*='action_button'],[class*='action-button'],[class*='add']";
+    const candidates = Array.from(document.querySelectorAll(selector)).filter((el) => {
+      if (!isSafeRepeatTrigger(el, rule?.triggerTexts)) return false;
+      if (!Array.isArray(rule?.sectionTexts) || rule.sectionTexts.length === 0) return true;
+
+      const root = getRepeatSectionRoot(el);
+      const titleSelector =
+        activeSiteAdapter?.repeatSectionTitleSelector || "h1,h2,h3,h4,h5,h6,legend";
+      const titleText = Array.from(root.querySelectorAll(titleSelector))
+        .map((title) => getDeepScanText(title))
+        .join(" ");
+      return rule.sectionTexts.some((text) =>
+        titleText.includes(normalizeDeepScanText(text))
+      );
+    });
+    return candidates.sort((left, right) => {
+      if (left.contains?.(right)) return 1;
+      if (right.contains?.(left)) return -1;
+      return 0;
+    })[0] || null;
+  }
+
+  function getRepeatSectionRoot(trigger) {
+    const selector =
+      activeSiteAdapter?.repeatSectionSelector ||
+      "section,fieldset,[class*='resume-block'],[class*='section'],[class*='module']";
+    return trigger?.closest?.(selector) || trigger?.parentElement || document;
+  }
+
+  function inferRepeatItemIndex(el, semanticSectionKey) {
+    const schemaSectionKey = fieldSemantics.getSchemaSectionKey?.(semanticSectionKey);
+    if (!el || !schemaSectionKey) return -1;
+
+    const identifierIndex = inferRepeatItemIndexFromIdentifier(el, schemaSectionKey);
+
+    const rule = (siteAdapters?.getRepeatRules?.(location) || []).find(
+      (entry) => entry.sectionKey === schemaSectionKey
+    );
+    if (!rule) return -1;
+
+    const triggerSelector =
+      activeSiteAdapter?.repeatTriggerSelector ||
+      "button:not([type='submit']),[role='button'],a,[class*='action_button'],[class*='action-button'],[class*='add']";
+    const matchingRoots = Array.from(document.querySelectorAll(triggerSelector))
+      .filter((candidate) => isSafeRepeatTrigger(candidate, rule.triggerTexts))
+      .map((trigger) => getRepeatSectionRoot(trigger))
+      .filter((root) => root && root.contains?.(el))
+      .sort((left, right) => {
+        if (left === right) return 0;
+        if (left.contains?.(right)) return 1;
+        if (right.contains?.(left)) return -1;
+        return 0;
+      });
+
+    const sectionSelector =
+      activeSiteAdapter?.repeatSectionSelector ||
+      "section,fieldset,[class*='resume-block'],[class*='section'],[class*='module']";
+    const sectionRoot = matchingRoots[0] || el.closest?.(sectionSelector);
+    if (!sectionRoot) return identifierIndex;
+
+    const itemSelectors = Array.from(
+      new Set([
+        activeSiteAdapter?.repeatItemSelector,
+        ...(siteAdapters?.COMMON_REPEAT_ITEM_SELECTORS || []),
+      ].filter(Boolean))
+    );
+    const controlSelector = "input,textarea,select,[contenteditable='true'],[role='textbox'],[role='combobox']";
+
+    for (const itemSelector of itemSelectors) {
+      const itemRoot = el.closest?.(itemSelector);
+      if (!itemRoot || itemRoot === sectionRoot || !sectionRoot.contains(itemRoot)) continue;
+
+      const itemRoots = Array.from(sectionRoot.querySelectorAll(itemSelector)).filter(
+        (candidate) =>
+          candidate !== sectionRoot &&
+          isVisible(candidate) &&
+          candidate.querySelectorAll(controlSelector).length >= 2
+      );
+      const itemIndex = itemRoots.indexOf(itemRoot);
+      if (itemIndex >= 0) return itemIndex;
+    }
+
+    return identifierIndex;
+  }
+
+  function inferRepeatItemIndexFromIdentifier(el, schemaSectionKey) {
+    const sectionTokens = {
+      educations: ["education", "school"],
+      internships: ["internship", "intern"],
+      workExperiences: ["workexperience", "employment"],
+      projects: ["project"],
+      awards: ["award", "honor"],
+      patents: ["patent"],
+      publications: ["publication", "paper"],
+      languages: ["language"],
+      campusExperiences: ["campusexperience", "campusactivity"],
+    };
+    const tokens = sectionTokens[schemaSectionKey] || [];
+    if (!el || tokens.length === 0) return -1;
+
+    const identifiers = [
+      el.id,
+      el.getAttribute?.("name"),
+      el.getAttribute?.("data-field"),
+      el.getAttribute?.("data-path"),
+    ].filter(Boolean);
+
+    for (const identifier of identifiers) {
+      const normalized = String(identifier).toLowerCase();
+      for (const token of tokens) {
+        const match = normalized.match(
+          new RegExp(`${token}(?:s|list|items?|entries?)?(?:[_\\-.]|\\[)*(\\d+)(?:\\]|[_\\-.]|$)`)
+        );
+        if (match) return Number(match[1]);
+      }
+    }
+
+    return -1;
+  }
+
+  function countRenderedRepeatItems(trigger, rule) {
+    const root = getRepeatSectionRoot(trigger);
+    const expectedLabels = new Set(
+      (rule?.rowLabels || []).map(normalizeDeepScanText).filter(Boolean)
+    );
+    if (expectedLabels.size === 0) return 0;
+
+    const labelCount = Array.from(root.querySelectorAll(LABEL_LIKE_SELECTOR)).filter((el) => {
+      if (!isVisible(el)) return false;
+      return expectedLabels.has(normalizeDeepScanText(el.textContent));
+    }).length;
+    const identifierIndexes = new Set(
+      Array.from(root.querySelectorAll("input,textarea,select,[contenteditable='true']"))
+        .map((el) => inferRepeatItemIndexFromIdentifier(el, rule?.sectionKey))
+        .filter((index) => Number.isInteger(index) && index >= 0)
+    );
+
+    return Math.max(labelCount, identifierIndexes.size);
+  }
+
+  async function waitForRepeatItem(trigger, rule, startRows, startControls) {
+    if (
+      countRenderedRepeatItems(trigger, rule) > startRows ||
+      countControls(getRepeatSectionRoot(trigger)) > startControls
+    ) {
+      return true;
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let pollTimer = null;
+      let timeoutTimer = null;
+      const root = getRepeatSectionRoot(trigger);
+      const observer = typeof MutationObserver === "function" ? new MutationObserver(check) : null;
+
+      function finish(found) {
+        if (settled) return;
+        settled = true;
+        if (pollTimer) clearTimeout(pollTimer);
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        observer?.disconnect();
+        resolve(found);
+      }
+
+      function check() {
+        const rowAdded = countRenderedRepeatItems(trigger, rule) > startRows;
+        const controlAdded = countControls(root) > startControls;
+        if (rowAdded || controlAdded) finish(true);
+      }
+
+      observer?.observe(root, { childList: true, subtree: true });
+      pollTimer = setTimeout(check, DEEP_SCAN_INITIAL_DELAY);
+      timeoutTimer = setTimeout(() => finish(false), DEEP_SCAN_POLL_TIMEOUT);
+    });
+  }
+
+  async function ensureRepeatableSections(resumeProfile) {
+    const rules = siteAdapters?.getRepeatRules?.(location) || [];
+    let totalClicks = 0;
+
+    for (const rule of rules) {
+      const desiredCount = Math.min(
+        getMeaningfulProfileItems(resumeProfile, rule.sectionKey).length,
+        REPEAT_SECTION_ITEM_CAP
+      );
+      if (desiredCount === 0 || totalClicks >= REPEAT_SECTION_MAX_CLICKS) continue;
+
+      const trigger = findRepeatSectionTrigger(rule);
+      if (!trigger) {
+        sendLog(
+          "warning",
+          `重复区块“${rule.sectionKey}”有 ${desiredCount} 条简历数据，但页面上未找到安全的新增入口`
+        );
+        continue;
+      }
+
+      let renderedCount = countRenderedRepeatItems(trigger, rule);
+      sendLog(
+        "info",
+        `重复区块计划：${rule.sectionKey} 简历=${desiredCount} 条，页面=${renderedCount} 条`
+      );
+      while (
+        renderedCount < desiredCount &&
+        totalClicks < REPEAT_SECTION_MAX_CLICKS
+      ) {
+        const root = getRepeatSectionRoot(trigger);
+        const startControls = countControls(root);
+        scrollIntoView(trigger);
+        clickLikeUser(trigger);
+        totalClicks += 1;
+
+        const added = await waitForRepeatItem(trigger, rule, renderedCount, startControls);
+        const nextCount = countRenderedRepeatItems(trigger, rule);
+        if (!added || nextCount <= renderedCount) {
+          sendLog(
+            "warning",
+            `未能继续新增“${rule.sectionKey}”区块，已停止自动点击以避免误操作`
+          );
+          break;
+        }
+        renderedCount = nextCount;
+      }
+
+      if (renderedCount > 0) {
+        sendLog(
+          "info",
+          `“${rule.sectionKey}”已准备 ${Math.min(renderedCount, desiredCount)}/${desiredCount} 条`
+        );
+      }
+    }
+
+    if (totalClicks > 0) {
+      sendLog("success", `重复经历区块准备完成：安全触发 ${totalClicks} 次新增`);
+    }
+    return totalClicks;
+  }
+
   async function triggerExpandableSections(resumeProfile) {
     const clickedElements = new WeakSet();
     let totalClicked = 0;
@@ -609,6 +974,7 @@
         hasValue: field.hasValue,
         valuePreview: field.valuePreview,
         options: field.options || [],
+        aliases: field.aliases || [],
       }));
 
     return {
@@ -621,7 +987,7 @@
         { type: "boolean_choice", trueValue: "text", falseValue: "text" },
         { type: "join", separator: ", " },
       ],
-      fields,
+      fields: fields.filter((field) => field.kind !== "file"),
       resumeFields,
     };
   }
@@ -644,20 +1010,58 @@
 
   function normalizeMappings(rawMappings, fields) {
     const validFieldIds = new Set(fields.map((field) => String(field.fieldId)));
+    const fieldById = new Map(fields.map((field) => [String(field.fieldId), field]));
     const validResumePaths = new Set(
       schema.getFieldCatalog({ mode: "max" }).map((field) => field.path)
     );
-    const normalized = [];
-
+    const rawByFieldId = new Map();
     for (const item of Array.isArray(rawMappings) ? rawMappings : []) {
       const fieldId = String(item?.fieldId || "").trim();
-      if (!fieldId || !validFieldIds.has(fieldId)) continue;
+      if (fieldId && validFieldIds.has(fieldId) && !rawByFieldId.has(fieldId)) {
+        rawByFieldId.set(fieldId, item);
+      }
+    }
+    const normalized = [];
 
-      const resumePath = String(item?.resumePath || "").trim();
+    for (const field of fields) {
+      const fieldId = String(field?.fieldId || "").trim();
+      if (!fieldId || !validFieldIds.has(fieldId)) continue;
+      const item = rawByFieldId.get(fieldId) || null;
+
+      const requestedResumePath = String(item?.resumePath || "").trim();
+      const validResumePath =
+        requestedResumePath && validResumePaths.has(requestedResumePath)
+          ? requestedResumePath
+          : "";
+      const preferredResumePath = fieldSemantics.resolvePreferredResumePath?.(
+        fieldById.get(fieldId),
+        validResumePath,
+        validResumePaths
+      ) || "";
+      const resumePath =
+        preferredResumePath ||
+        fieldSemantics.alignResumePathToFieldSection(
+          validResumePath,
+          fieldById.get(fieldId)?.sectionKey || "",
+          validResumePaths
+        );
+      const wasSectionCorrected = Boolean(
+        validResumePath && resumePath && resumePath !== validResumePath
+      );
+      const wasDeterministicallyMapped = Boolean(
+        preferredResumePath && preferredResumePath !== validResumePath
+      );
+      if (!item && !preferredResumePath) continue;
       normalized.push({
         fieldId,
-        resumePath: resumePath && validResumePaths.has(resumePath) ? resumePath : "",
-        reason: String(item?.reason || "").trim().slice(0, 240),
+        resumePath,
+        reason: `${String(item?.reason || "").trim()}${
+          wasDeterministicallyMapped
+            ? "；已按区块、条目序号和字段标签确定映射"
+            : wasSectionCorrected
+            ? "；已按页面区块纠正映射"
+            : ""
+        }`.slice(0, 240),
         transform: normalizeTransform(item?.transform),
       });
     }
@@ -952,6 +1356,7 @@
         sectionKey: semanticMeta.sectionKey,
         sectionLabel: semanticMeta.sectionLabel,
         sectionEvidence: semanticMeta.sectionEvidence,
+        sectionItemIndex: semanticMeta.sectionItemIndex,
         nearbyLabels: semanticMeta.nearbyLabels,
       };
 
@@ -973,7 +1378,13 @@
           ...commonMeta,
         });
 
-        runtime.push({ fieldId, kind: "select", el });
+        runtime.push({
+          fieldId,
+          kind: "select",
+          el,
+          id: el.id || "",
+          name: el.getAttribute("name") || "",
+        });
         continue;
       }
 
@@ -989,7 +1400,13 @@
           ...commonMeta,
         });
 
-        runtime.push({ fieldId, kind: "textarea", el });
+        runtime.push({
+          fieldId,
+          kind: "textarea",
+          el,
+          id: el.id || "",
+          name: el.getAttribute("name") || "",
+        });
         continue;
       }
 
@@ -1008,7 +1425,13 @@
           ...commonMeta,
         });
 
-        runtime.push({ fieldId, kind: "contenteditable", el });
+        runtime.push({
+          fieldId,
+          kind: "contenteditable",
+          el,
+          id: el.id || "",
+          name: el.getAttribute("name") || "",
+        });
         continue;
       }
 
@@ -1070,6 +1493,7 @@
             sectionKey: groupMeta.sectionKey,
             sectionLabel: groupMeta.sectionLabel,
             sectionEvidence: groupMeta.sectionEvidence,
+            sectionItemIndex: groupMeta.sectionItemIndex,
             nearbyLabels: groupMeta.nearbyLabels,
           });
         }
@@ -1079,11 +1503,16 @@
       }
 
       const fieldId = `f_${++idSeq}`;
+      const textRuntime = buildTextLikeRuntime(fieldId, el, type, semanticMeta);
       fields.push({
         fieldId,
-        kind: "text",
+        kind: textRuntime.kind,
         inputType: type,
-        label: semanticMeta.label,
+        label: textRuntime.displayLabel || semanticMeta.label,
+        baseLabel: semanticMeta.label,
+        compositeRole: textRuntime.compositeRole || "",
+        compositeIndex: textRuntime.compositeIndex,
+        compositeCount: textRuntime.compositeCount,
         name: el.getAttribute("name") || "",
         id: el.id || "",
         placeholder: el.getAttribute("placeholder") || "",
@@ -1091,7 +1520,7 @@
         ...commonMeta,
       });
 
-      runtime.push(buildTextLikeRuntime(fieldId, el, type, semanticMeta));
+      runtime.push(textRuntime);
     }
 
     for (const group of radioGroups.values()) {
@@ -1114,6 +1543,7 @@
         sectionKey: group.sectionKey,
         sectionLabel: group.sectionLabel,
         sectionEvidence: group.sectionEvidence,
+        sectionItemIndex: group.sectionItemIndex,
         nearbyLabels: group.nearbyLabels,
         required: group.elements.some(
           (input) => input.required || input.getAttribute("aria-required") === "true"
@@ -1151,6 +1581,7 @@
         sectionKey: group.sectionKey,
         sectionLabel: group.sectionLabel,
         sectionEvidence: group.sectionEvidence,
+        sectionItemIndex: group.sectionItemIndex,
         nearbyLabels: group.nearbyLabels,
         required: group.elements.some(
           (input) => input.required || input.getAttribute("aria-required") === "true"
@@ -1266,8 +1697,8 @@
   }
 
   function pickLikelyFormRoot() {
-    const forms = Array.from(document.querySelectorAll("form")).filter((form) =>
-      isVisible(form)
+    const forms = Array.from(document.querySelectorAll("form")).filter(
+      (form) => isVisible(form) && countControls(form) >= 2
     );
     if (forms.length === 0) return document;
 
@@ -1275,11 +1706,38 @@
       .map((form) => ({ form, count: countControls(form) }))
       .sort((left, right) => right.count - left.count);
 
-    if (ranked[0]?.count >= 2) {
-      return ranked[0].form;
-    }
+    if (ranked.length === 1) return ranked[0].form;
+
+    const commonRoot = findLowestCommonAncestor(ranked.map((item) => item.form));
+    const formControlTotal = ranked.reduce((sum, item) => sum + item.count, 0);
+    const commonControlTotal = commonRoot ? countControls(commonRoot) : 0;
+    const isPageWideRoot =
+      commonRoot === document.body || commonRoot === document.documentElement;
+    const isFocusedCommonRoot =
+      commonRoot &&
+      !isPageWideRoot &&
+      commonControlTotal <= formControlTotal + Math.max(20, formControlTotal * 0.5);
+
+    if (isFocusedCommonRoot) return commonRoot;
+
+    const largestShare = ranked[0].count / Math.max(1, formControlTotal);
+    if (largestShare >= 0.7) return ranked[0].form;
 
     return document;
+  }
+
+  function findLowestCommonAncestor(elements) {
+    const nodes = Array.isArray(elements) ? elements.filter(Boolean) : [];
+    if (nodes.length === 0) return null;
+
+    let candidate = nodes[0];
+    while (
+      candidate &&
+      !nodes.every((node) => candidate === node || candidate.contains?.(node))
+    ) {
+      candidate = candidate.parentElement;
+    }
+    return candidate || null;
   }
 
   function countControls(root) {
@@ -1315,11 +1773,13 @@
   function buildFieldSemanticMeta(el, { kind = "text", inputType = "" } = {}) {
     const primaryCandidates = collectDirectFieldLabelCandidates(el);
     const nearbyLabels = collectNearbyLabelCandidates(el).slice(0, 6);
+    const identifierCandidates = collectControlIdentifierCandidates(el);
     const rawLabel = fieldText.selectBestFieldTextCandidate(primaryCandidates);
     const filteredNearbyLabels = nearbyLabels.filter((item) => item !== rawLabel);
     const section = fieldSemantics.inferSectionFromTexts([
       rawLabel,
       ...filteredNearbyLabels,
+      ...identifierCandidates,
       ...collectSectionTextCandidates(el),
     ]);
 
@@ -1331,6 +1791,8 @@
         sectionLabel: section.label,
       });
 
+    const sectionItemIndex = inferRepeatItemIndex(el, section.key);
+
     return {
       label,
       context: getFieldContext(el, {
@@ -1341,27 +1803,171 @@
       sectionKey: section.key || "",
       sectionLabel: section.label || "",
       sectionEvidence: section.evidence || "",
+      sectionItemIndex,
       nearbyLabels: filteredNearbyLabels.slice(0, 4),
     };
   }
 
   function buildTextLikeRuntime(fieldId, el, inputType, semanticMeta) {
+    const composite = inferCompositeControlRole(el, inputType, semanticMeta);
+    const customPicker = isCustomPickerInput(el);
     return {
       fieldId,
-      kind: "text",
+      kind: customPicker ? "custom_picker" : "text",
       inputType,
       el,
+      id: el.id || "",
+      name: el.getAttribute?.("name") || "",
       readOnly: Boolean(el.readOnly || el.getAttribute("aria-readonly") === "true"),
       label: semanticMeta?.label || "",
       placeholder: el.getAttribute("placeholder") || "",
       context: semanticMeta?.context || "",
       nearbyLabels: semanticMeta?.nearbyLabels || [],
+      compositeRole: composite.role,
+      compositeIndex: composite.index,
+      compositeCount: composite.count,
+      displayLabel: decorateCompositeLabel(semanticMeta?.label || "", composite.role),
+      pickerRoot: customPicker ? getCustomPickerRoot(el) : null,
+      pickerPrecision: inferDatePickerPrecision(el, inputType),
       hasCalendarIcon: Boolean(
         el.closest?.(
           '[class*="picker"],[class*="Picker"],[class*="calendar"],[class*="Calendar"],[class*="date"],[class*="Date"]'
         ) || el.parentElement?.querySelector?.(".mtdicon-calendar-o,[class*='calendar']")
       ),
     };
+  }
+
+  function inferDatePickerPrecision(el, inputType = "") {
+    const normalizedType = String(inputType || "").toLowerCase();
+    if (normalizedType === "month") return "month";
+    if (["date", "datetime-local"].includes(normalizedType)) return "day";
+
+    const currentValue = String(el?.value || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(currentValue)) return "day";
+    if (/^\d{4}-\d{2}$/.test(currentValue)) return "month";
+
+    const evidence = [
+      el?.getAttribute?.("data-picker"),
+      el?.getAttribute?.("data-mode"),
+      el?.getAttribute?.("data-type"),
+      el?.getAttribute?.("placeholder"),
+      el?.className,
+      el?.closest?.("[class*='picker'],[class*='Picker']")?.className,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    if (/(month[-_ ]?picker|picker[-_ ]?month|选择月份|选择年月|年月选择)/.test(evidence)) {
+      return "month";
+    }
+    if (/(day[-_ ]?picker|picker[-_ ]?date|date[-_ ]?picker|选择日期)/.test(evidence)) {
+      return "day";
+    }
+    return "";
+  }
+
+  function getCompositeControlContainer(el) {
+    return (
+      el.closest?.(
+        ".md-form-item,[class*='form-item'],[class*='form_item'],[class*='FormItem'],fieldset"
+      ) || null
+    );
+  }
+
+  function getCompositeControls(el) {
+    const container = getCompositeControlContainer(el);
+    if (!container) return [el];
+    return Array.from(container.querySelectorAll("input,textarea,select")).filter((control) => {
+      const type = String(control.getAttribute?.("type") || "text").toLowerCase();
+      return !["hidden", "file", "submit", "button", "reset"].includes(type) && isVisible(control);
+    });
+  }
+
+  function inferCompositeControlRole(el, inputType, semanticMeta) {
+    const controls = getCompositeControls(el);
+    const index = controls.indexOf(el);
+    if (index < 0 || controls.length < 2) {
+      return { role: "", index: Math.max(index, 0), count: controls.length };
+    }
+
+    const evidence = normalizeDeepScanText(
+      [
+        semanticMeta?.label,
+        semanticMeta?.context,
+        el.getAttribute?.("placeholder"),
+        el.className,
+      ]
+        .filter(Boolean)
+        .join(" ")
+    );
+    const isDateRange =
+      ["date", "month"].includes(inputType) ||
+      /(起止时间|时间范围|日期范围|开始时间|结束时间|startdate|enddate|rangeinput)/.test(evidence);
+    if (isDateRange) {
+      return {
+        role: index === 0 ? "start" : index === controls.length - 1 ? "end" : `part${index + 1}`,
+        index,
+        count: controls.length,
+      };
+    }
+
+    if (/(手机号码|手机号|联系电话|电话号码|mobile|phone)/.test(evidence)) {
+      return {
+        role: index === 0 ? "countryCode" : index === controls.length - 1 ? "nationalNumber" : `part${index + 1}`,
+        index,
+        count: controls.length,
+      };
+    }
+
+    if (/(证件号码|证件号|身份证号|护照号码|identity|passport)/.test(evidence)) {
+      return {
+        role: index === 0 ? "type" : index === controls.length - 1 ? "value" : `part${index + 1}`,
+        index,
+        count: controls.length,
+      };
+    }
+
+    return { role: "", index, count: controls.length };
+  }
+
+  function decorateCompositeLabel(label, role) {
+    const suffixes = {
+      start: "开始",
+      end: "结束",
+      countryCode: "国家/地区代码",
+      nationalNumber: "号码",
+      type: "类型",
+      value: "号码",
+    };
+    const suffix = suffixes[role];
+    return suffix ? `${label || "复合字段"}（${suffix}）` : label;
+  }
+
+  function isCustomPickerInput(el) {
+    if (!el || String(el.tagName || "").toLowerCase() !== "input") return false;
+    if (
+      activeSiteAdapter?.customPickerInputSelector &&
+      el.matches?.(activeSiteAdapter.customPickerInputSelector)
+    ) {
+      return true;
+    }
+
+    const className = String(el.className || "");
+    if (/date|calendar|range/i.test(className)) return false;
+    return Boolean(
+      el.getAttribute?.("role") === "combobox" ||
+      el.closest?.(
+        "[class*='cascader'],[class*='Cascader'],[class*='picker-select'],[class*='PickerSelect']"
+      )
+    );
+  }
+
+  function getCustomPickerRoot(el) {
+    const selector =
+      activeSiteAdapter?.customPickerRootSelector ||
+      "[class*='cascader']:not(input),[class*='Cascader']:not(input),[class*='picker']:not(input),[class*='Picker']:not(input),[class*='select']:not(input),[class*='Select']:not(input)";
+    return el.closest?.(selector) || el.parentElement || el;
   }
 
   function getFieldLabel(el) {
@@ -1463,6 +2069,27 @@
 
     pushUniqueMeaningfulText(candidates, el.getAttribute?.("placeholder") || "");
     pushUniqueMeaningfulText(candidates, el.getAttribute?.("name") || "");
+
+    return candidates;
+  }
+
+  function collectControlIdentifierCandidates(el) {
+    const candidates = [];
+    const identifiers = [
+      el?.id,
+      el?.getAttribute?.("name"),
+      el?.getAttribute?.("data-field"),
+      el?.getAttribute?.("data-path"),
+    ].filter(Boolean);
+
+    for (const identifier of identifiers) {
+      const humanized = String(identifier)
+        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+        .replace(/[_.[\]-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      pushUniqueMeaningfulText(candidates, humanized);
+    }
 
     return candidates;
   }
@@ -1644,6 +2271,34 @@
       return true;
     }
 
+    if (runtime.kind === "custom_picker") {
+      const directValue = String(runtime.el?.value || "").trim();
+      if (directValue) return true;
+
+      const root = runtime.pickerRoot;
+      if (!root) return false;
+      const className = String(root.className || "");
+      if (/(?:^|[-_])selected(?:$|[-_\s])|has[-_]?value|is[-_]?filled/i.test(className)) {
+        return true;
+      }
+
+      const explicitValue = String(
+        root.getAttribute?.("data-value") ||
+        root.getAttribute?.("aria-valuetext") ||
+        root.getAttribute?.("aria-valuenow") ||
+        ""
+      ).trim();
+      if (explicitValue) return true;
+
+      const selectedNode = root.querySelector?.(
+        "[class*='single_selected'],[class*='single-selected'],[class*='selected_label'],[class*='selected-label'],[data-selected='true'],[aria-selected='true']"
+      );
+      const selectedText = normalizeText(selectedNode?.textContent || "");
+      return Boolean(
+        selectedText && !/^(请选择|请输入|select|choose)$/i.test(selectedText)
+      );
+    }
+
     if (runtime.kind === "contenteditable") {
       return Boolean(String(runtime.el?.textContent || "").trim());
     }
@@ -1655,11 +2310,96 @@
     return Boolean(String(runtime.el?.value ?? "").trim());
   }
 
+  function refreshRuntimeElement(runtime) {
+    if (!runtime?.el || typeof document === "undefined") return runtime;
+
+    let current = null;
+    if (runtime.id) {
+      current = document.getElementById(runtime.id);
+    }
+    if (!current && runtime.name) {
+      current = document.querySelector(`[name="${cssEscape(runtime.name)}"]`);
+    }
+    if (!current || current === runtime.el) return runtime;
+
+    runtime.el = current;
+    runtime.readOnly = Boolean(
+      current.readOnly || current.getAttribute?.("aria-readonly") === "true"
+    );
+    runtime.pickerPrecision = inferDatePickerPrecision(current, runtime.inputType);
+    if (runtime.kind === "custom_picker") {
+      runtime.pickerRoot = getCustomPickerRoot(current);
+    }
+    runtime.hasCalendarIcon = Boolean(
+      current.closest?.(
+        '[class*="picker"],[class*="Picker"],[class*="calendar"],[class*="Calendar"],[class*="date"],[class*="Date"]'
+      ) || current.parentElement?.querySelector?.(".mtdicon-calendar-o,[class*='calendar']")
+    );
+    return runtime;
+  }
+
+  function inferAssetKindFromField(field) {
+    const evidence = normalizeDeepScanText(
+      [field?.label, field?.context, field?.sectionLabel, field?.name, field?.id]
+        .filter(Boolean)
+        .join(" ")
+    );
+    if (/(个人照片|证件照|头像|photo|avatar)/.test(evidence)) return "photo";
+    if (/(作品|成果附件|相关附件|portfolio|worksample)/.test(evidence)) return "portfolio";
+    if (/(简历附件|上传简历|个人简历|resume|curriculumvitae|\bcv\b)/.test(evidence)) {
+      return "resume";
+    }
+    return "";
+  }
+
+  function findMatchingResumeAsset(field, assets) {
+    const kind = inferAssetKindFromField(field);
+    if (!kind) return null;
+    return (Array.isArray(assets) ? assets : []).find(
+      (asset) => asset?.kind === kind && asset?.name && asset?.dataBase64
+    ) || null;
+  }
+
+  function base64ToBytes(value) {
+    const binary = atob(String(value || ""));
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  }
+
+  async function fillFileInput(input, asset) {
+    if (!input || !asset?.dataBase64 || !asset?.name) return false;
+    try {
+      const bytes = base64ToBytes(asset.dataBase64);
+      const file = new File([bytes], asset.name, {
+        type: asset.type || "application/octet-stream",
+        lastModified: Date.now(),
+      });
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      input.files = transfer.files;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await sleep(80);
+      return Boolean(input.files?.length);
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function fillOne(runtime, value, { overwrite = true } = {}) {
     if (!runtime) return { filled: false, message: "字段不存在" };
+    if (!overwrite && hasExistingFieldValue(runtime)) {
+      return { filled: false, skipped: true, message: "字段已有内容，增量模式下不覆盖" };
+    }
 
     if (runtime.kind === "file") {
-      return { filled: false, message: "文件上传字段无法自动填写" };
+      const ok = await fillFileInput(runtime.el, value);
+      return ok
+        ? { filled: true }
+        : { filled: false, message: "附件写入失败，请手动选择文件" };
     }
 
     if (runtime.kind === "checkbox_group") {
@@ -1698,6 +2438,15 @@
       return ok ? { filled: true } : { filled: false, message: "未找到可匹配的下拉选项" };
     }
 
+    if (runtime.kind === "custom_picker") {
+      const desired = prepareTextValueForRuntime(runtime, value);
+      if (!desired) return { filled: false, message: "没有可选择内容" };
+      const ok = await fillCustomPicker(runtime, desired);
+      return ok
+        ? { filled: true }
+        : { filled: false, message: "未找到可匹配的自定义下拉选项" };
+    }
+
     if (runtime.kind === "contenteditable") {
       const desired = prepareTextValueForRuntime(runtime, value);
       if (!desired) return { filled: false, message: "没有可填写内容" };
@@ -1714,7 +2463,10 @@
     const desired = prepareTextValueForRuntime(runtime, value);
     if (!desired) return { filled: false, message: "没有可填写内容" };
 
-    if (fillRuntime.isReadonlyDateLikeRuntime(runtime)) {
+    if (
+      fillRuntime.isDateLikeRuntime?.(runtime) ||
+      fillRuntime.isReadonlyDateLikeRuntime(runtime)
+    ) {
       const ok = await fillReadonlyDateRuntime(runtime, desired);
       return ok ? { filled: true } : { filled: false, message: "日期控件写入失败" };
     }
@@ -1741,6 +2493,11 @@
 
     if (!text) return "";
 
+    if (isImpactFactorRuntime(runtime)) {
+      text = normalizeImpactFactorValue(text);
+      if (!text) return "";
+    }
+
     text = fillRuntime.normalizeValueForRuntime(runtime, text);
     if (!text) return "";
 
@@ -1759,6 +2516,29 @@
     }
 
     return text;
+  }
+
+  function isImpactFactorRuntime(runtime) {
+    const evidence = [
+      runtime?.label,
+      runtime?.id,
+      runtime?.name,
+      runtime?.placeholder,
+      runtime?.context,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return /(影响因子|impact\s*factor|impactfactor)/i.test(evidence);
+  }
+
+  function normalizeImpactFactorValue(value) {
+    const text = String(value || "").trim();
+    const match = text.match(/^(?:(?:if|影响因子)\s*[:：]?\s*)?(\d{1,2}(?:\.\d{1,3})?)$/i);
+    if (!match) return "";
+    const numeric = Number(match[1]);
+    return Number.isFinite(numeric) && numeric >= 0 && numeric < 100
+      ? match[1]
+      : "";
   }
 
   function buildTextFallbackValues(runtime, desired) {
@@ -1894,7 +2674,11 @@
     logDateFillStep(runtime, "开始", `目标值=${desired}`);
 
     const directWriteOk = await setValueWithEvents(runtime.el, desired, runtime);
-    if (directWriteOk) {
+    refreshRuntimeElement(runtime);
+    if (
+      directWriteOk &&
+      fillRuntime.matchesWrittenValue(runtime, runtime.el?.value, desired)
+    ) {
       logDateFillStep(runtime, "直接写入成功");
       return true;
     }
@@ -1919,7 +2703,11 @@
 
     const parsed = parseDateParts(desired);
     if (!parsed.year || !parsed.month) {
-      logDateFillStep(runtime, "解析目标日期失败", desired);
+      logDateFillStep(
+        runtime,
+        "目标日期精度不足",
+        `${desired}；日期组件至少需要年份和月份`
+      );
       return false;
     }
 
@@ -1928,41 +2716,111 @@
       "面板已打开",
       `year=${parsed.year} month=${parsed.month} day=${parsed.day || 0}`
     );
+    const panelPrecision = inferVisibleDatePanelPrecision(panel);
+    if (panelPrecision === "day" && !parsed.day) {
+      logDateFillStep(runtime, "目标日期精度不足", `${desired}；该组件需要具体日期`);
+      return false;
+    }
+    const shouldPickDay = Boolean(parsed.day && panelPrecision !== "month");
+    const expectedDesired = panelPrecision === "month"
+      ? `${parsed.year}-${String(parsed.month).padStart(2, "0")}`
+      : desired;
 
-    const yearReady = await movePickerToYear(panel, parsed.year);
+    const yearReady = await movePickerToYear(panel, parsed.year, runtime.el);
     if (!yearReady) {
       logDateFillStep(runtime, "年份切换失败", String(parsed.year));
       return false;
     }
 
     panel = findVisibleDatePanel(runtime.el) || panel;
-    const monthLabel = `${Number(parsed.month)}月`;
-    if (!(await clickPanelCell(panel, monthLabel))) {
-      logDateFillStep(runtime, "月份点击失败", monthLabel);
-      return false;
-    }
+    if (shouldPickDay) {
+      const monthReady = await movePickerToMonth(
+        panel,
+        parsed.month,
+        runtime.el
+      );
+      if (!monthReady) {
+        logDateFillStep(runtime, "月份切换失败", String(parsed.month));
+        return false;
+      }
 
-    logDateFillStep(runtime, "月份点击成功", monthLabel);
-    await sleep(120);
-
-    if (parsed.day) {
       panel = findVisibleDatePanel(runtime.el) || panel;
-      const dayOk = await clickPanelCell(panel, String(Number(parsed.day)));
+      const dayOk = await clickPanelCell(panel, String(Number(parsed.day)), {
+        unit: "day",
+      });
       if (!dayOk) {
         logDateFillStep(runtime, "日期点击失败", String(Number(parsed.day)));
         return false;
       }
       logDateFillStep(runtime, "日期点击成功", String(Number(parsed.day)));
       await sleep(120);
+    } else {
+      panel = findVisibleDatePanel(runtime.el) || panel;
+      const monthLabel = `${Number(parsed.month)}月`;
+      const monthOk = await clickPickerMonthForYear(
+        panel,
+        parsed.year,
+        parsed.month
+      );
+      if (!monthOk) {
+        logDateFillStep(runtime, "月份点击失败", monthLabel);
+        return false;
+      }
+      logDateFillStep(runtime, "月份点击成功", monthLabel);
+      await sleep(120);
     }
 
-    const matched = fillRuntime.matchesWrittenValue(runtime, runtime.el.value, desired);
+    refreshRuntimeElement(runtime);
+    let matched = fillRuntime.matchesWrittenValue(
+      runtime,
+      runtime.el?.value,
+      expectedDesired
+    );
+    if (!matched) {
+      panel = findVisibleDatePanel(runtime.el) || panel;
+      const confirmed = await clickDatePanelConfirmation(panel);
+      if (confirmed) {
+        await sleep(120);
+        refreshRuntimeElement(runtime);
+        matched = fillRuntime.matchesWrittenValue(
+          runtime,
+          runtime.el?.value,
+          expectedDesired
+        );
+      }
+    }
     logDateFillStep(
       runtime,
       matched ? "最终校验成功" : "最终校验失败",
       `当前值=${runtime.el.value || "(empty)"}`
     );
     return matched;
+  }
+
+  function inferVisibleDatePanelPrecision(panel) {
+    if (!panel) return "";
+    const classText = [
+      panel.className,
+      ...Array.from(panel.querySelectorAll?.("[class]") || []).map((node) => node.className),
+    ]
+      .map((value) => (typeof value === "string" ? value : ""))
+      .join(" ")
+      .toLowerCase();
+    if (/(month[-_ ]?panel|month[-_ ]?picker|picker[-_ ]?month)/.test(classText)) {
+      return "month";
+    }
+    if (/(date[-_ ]?panel|day[-_ ]?panel|date[-_ ]?picker|picker[-_ ]?date)/.test(classText)) {
+      return "day";
+    }
+
+    const weekdayText = normalizeText(
+      Array.from(panel.querySelectorAll?.("th") || [])
+        .map((node) => node.textContent || "")
+        .join(" ")
+    );
+    return /(一|二|三|四|五|六|日|mon|tue|wed|thu|fri|sat|sun)/i.test(weekdayText)
+      ? "day"
+      : "";
   }
 
   function logDateFillStep(runtime, step, detail = "") {
@@ -1976,20 +2834,27 @@
   function findVisibleDatePanel(anchorEl) {
     const candidates = Array.from(
       document.querySelectorAll(
-        '[class*="picker"],[class*="Picker"],[class*="calendar"],[class*="Calendar"],[role="dialog"]'
+        '[class*="picker"],[class*="Picker"],[class*="calendar"],[class*="Calendar"],[role="dialog"],[role="tooltip"]'
       )
     ).filter((node) => {
       if (node.contains?.(anchorEl)) return false;
       if (!isVisible(node)) return false;
       const text = normalizeText(node.textContent || "");
-      return /\d{4}年|1月|2月|3月|4月|5月|6月|7月|8月|9月|10月|11月|12月/.test(text);
+      return /(?:19|20)\d{2}\s*年?|1月|2月|3月|4月|5月|6月|7月|8月|9月|10月|11月|12月|january|february|march|april|may|june|july|august|september|october|november|december/i.test(text);
     });
 
     if (candidates.length === 0) return null;
-    if (!anchorEl) return candidates[0];
+    const panelRoots = candidates.filter(
+      (candidate) =>
+        !candidates.some(
+          (other) => other !== candidate && other.contains?.(candidate)
+        )
+    );
+    const roots = panelRoots.length > 0 ? panelRoots : candidates;
+    if (!anchorEl) return roots[0];
 
     const anchorRect = anchorEl.getBoundingClientRect();
-    return candidates
+    return roots
       .map((node) => {
         const rect = node.getBoundingClientRect();
         const dx = rect.left - anchorRect.left;
@@ -2002,71 +2867,199 @@
       .sort((left, right) => left.distance - right.distance)[0]?.node || candidates[0];
   }
 
-  async function movePickerToYear(panel, targetYear) {
-    for (let attempt = 0; attempt < 24; attempt += 1) {
-      const currentYear = getVisiblePickerYear(panel);
-      if (!currentYear) return true;
-      if (currentYear === targetYear) return true;
+  async function movePickerToYear(panel, targetYear, anchorEl = null) {
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      panel = findVisibleDatePanel(anchorEl) || panel;
+      const visibleYears = getVisiblePickerYears(panel);
+      if (visibleYears.length === 0 || visibleYears.includes(targetYear)) return true;
 
-      const control = findYearNavigationControl(panel, currentYear, targetYear);
+      const currentYear =
+        targetYear < Math.min(...visibleYears)
+          ? Math.min(...visibleYears)
+          : Math.max(...visibleYears);
+      const control = findDateNavigationControl(
+        panel,
+        targetYear < currentYear ? "previous" : "next",
+        "year"
+      );
       if (!control) return false;
 
       clickLikeUser(control);
-      await sleep(120);
+      await sleep(100);
     }
-
     return false;
   }
 
-  function getVisiblePickerYear(panel) {
-    const nodes = Array.from(panel.querySelectorAll("*"));
-    for (const node of nodes) {
-      const text = normalizeText(node.textContent || "");
-      const match = text.match(/^(\d{4})年$/);
-      if (match) {
-        return Number(match[1]);
-      }
+  function getVisiblePickerYears(panel) {
+    if (!panel) return [];
+    const years = [];
+    for (const node of Array.from(panel.querySelectorAll("*"))) {
+      const match = normalizeDatePanelToken(node.textContent).match(/^(\d{4})年?$/);
+      const year = match ? Number(match[1]) : 0;
+      if (year >= 1900 && year <= 2200 && !years.includes(year)) years.push(year);
+    }
+    return years;
+  }
+
+  function getVisiblePickerMonth(panel) {
+    if (!panel) return 0;
+    const candidates = Array.from(
+      panel.querySelectorAll(
+        '[role="button"],[class*="header-label"],[class*="header_label"],[class*="month-btn"],[class*="month_btn"]'
+      )
+    );
+    for (const node of candidates) {
+      const month = parsePickerMonthToken(node.textContent);
+      if (month) return month;
     }
     return 0;
   }
 
-  function findYearNavigationControl(panel, currentYear, targetYear) {
-    const buttons = Array.from(
+  async function movePickerToMonth(panel, targetMonth, anchorEl = null) {
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      panel = findVisibleDatePanel(anchorEl) || panel;
+      const currentMonth = getVisiblePickerMonth(panel);
+      if (!currentMonth || currentMonth === targetMonth) return true;
+
+      const direction = targetMonth > currentMonth ? "next" : "previous";
+      const control = findDateNavigationControl(panel, direction, "month");
+      if (!control) return false;
+
+      clickLikeUser(control);
+      await sleep(100);
+    }
+    return false;
+  }
+
+  function findDateNavigationControl(panel, direction, unit) {
+    if (!panel) return null;
+    const controls = Array.from(
       panel.querySelectorAll(
         'button,[role="button"],[tabindex],[class*="prev"],[class*="next"],[class*="arrow"],[class*="Arrow"]'
       )
-    ).filter((node) => isVisible(node));
+    ).filter((node) => isVisible(node) && node.getAttribute?.("aria-disabled") !== "true");
+    if (controls.length === 0) return null;
 
-    if (buttons.length === 0) return null;
-
-    const yearNode = Array.from(panel.querySelectorAll("*")).find((node) =>
-      /^\d{4}年$/.test(normalizeText(node.textContent || ""))
+    const descriptors = controls.map((node) => ({
+      node,
+      text: normalizeForMatch(
+        [
+          node.textContent,
+          node.getAttribute?.("aria-label"),
+          node.getAttribute?.("title"),
+          node.className,
+        ].filter(Boolean).join(" ")
+      ),
+      rect: node.getBoundingClientRect(),
+    }));
+    const isPrevious = direction === "previous";
+    const directionPattern = isPrevious
+      ? /(前|上|previous|prev|left)/
+      : /(后|下|next|right)/;
+    const unitPattern = unit === "year"
+      ? /(年|year|super|double|darrow)/
+      : /(月|month)/;
+    const explicit = descriptors.find(
+      (item) => directionPattern.test(item.text) && unitPattern.test(item.text)
     );
-    if (!yearNode) {
-      return targetYear < currentYear ? buttons[0] : buttons[buttons.length - 1];
+    if (explicit) return explicit.node;
+
+    const yearNodes = Array.from(panel.querySelectorAll("*")).filter((node) =>
+      /^\d{4}年?$/.test(normalizeDatePanelToken(node.textContent))
+    );
+    const referenceRect = yearNodes[0]?.getBoundingClientRect?.();
+    if (!referenceRect) {
+      return isPrevious ? controls[0] : controls[controls.length - 1];
     }
 
-    const yearRect = yearNode.getBoundingClientRect();
-    const leftButtons = [];
-    const rightButtons = [];
+    const directional = descriptors.filter((item) =>
+      isPrevious
+        ? item.rect.right <= referenceRect.left
+        : item.rect.left >= referenceRect.right
+    );
+    if (directional.length === 0) return null;
 
-    for (const button of buttons) {
-      const rect = button.getBoundingClientRect();
-      if (rect.right <= yearRect.left) {
-        leftButtons.push({ button, rect });
-      } else if (rect.left >= yearRect.right) {
-        rightButtons.push({ button, rect });
-      }
+    if (unit === "year") {
+      return directional.sort((left, right) =>
+        isPrevious
+          ? left.rect.left - right.rect.left
+          : right.rect.right - left.rect.right
+      )[0]?.node || null;
     }
-
-    if (targetYear < currentYear) {
-      return leftButtons.sort((a, b) => b.rect.right - a.rect.right)[0]?.button || buttons[0];
-    }
-
-    return rightButtons.sort((a, b) => a.rect.left - b.rect.left)[0]?.button || buttons[buttons.length - 1];
+    return directional.sort((left, right) =>
+      isPrevious
+        ? right.rect.right - left.rect.right
+        : left.rect.left - right.rect.left
+    )[0]?.node || null;
   }
 
-  async function clickPanelCell(panel, text) {
+  function normalizeDatePanelToken(value) {
+    return String(value || "").toLowerCase().replace(/\s+/g, "").trim();
+  }
+
+  function parsePickerMonthToken(value) {
+    const token = normalizeDatePanelToken(value).replace(/[.,]/g, "");
+    const numeric = token.match(/^(1[0-2]|0?[1-9])月?$/);
+    if (numeric) return Number(numeric[1]);
+
+    const monthNames = [
+      ["jan", "january"], ["feb", "february"], ["mar", "march"],
+      ["apr", "april"], ["may"], ["jun", "june"],
+      ["jul", "july"], ["aug", "august"], ["sep", "sept", "september"],
+      ["oct", "october"], ["nov", "november"], ["dec", "december"],
+    ];
+    const index = monthNames.findIndex((aliases) => aliases.includes(token));
+    return index >= 0 ? index + 1 : 0;
+  }
+
+  function getPickerMonthLabels(month) {
+    const fullNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ];
+    const fullName = fullNames[Number(month) - 1] || "";
+    return [
+      `${Number(month)}月`,
+      String(Number(month)),
+      String(Number(month)).padStart(2, "0"),
+      fullName,
+      fullName.slice(0, 3),
+    ].filter(Boolean);
+  }
+
+  async function clickPickerMonthForYear(panel, year, month) {
+    const yearNode = Array.from(panel?.querySelectorAll?.("*") || []).find(
+      (node) => normalizeDatePanelToken(node.textContent).replace(/年$/, "") === String(year)
+    );
+    const scope =
+      yearNode?.closest?.(
+        '[class*="content"],[class*="pane"],[class*="PanelContent"],[class*="panel-content"]'
+      ) || panel;
+    for (const label of getPickerMonthLabels(month)) {
+      if (await clickPanelCell(scope, label, { unit: "month" })) return true;
+    }
+    return false;
+  }
+
+  async function clickDatePanelConfirmation(panel) {
+    if (!panel || !isVisible(panel)) return false;
+    const candidates = Array.from(
+      panel.querySelectorAll('button,[role="button"],a')
+    ).filter((node) => {
+      if (!isVisible(node) || node.getAttribute?.("aria-disabled") === "true") return false;
+      const text = normalizeForMatch(
+        [node.textContent, node.getAttribute?.("aria-label"), node.getAttribute?.("title")]
+          .filter(Boolean)
+          .join(" ")
+      );
+      return /^(确定|确认|完成|ok|confirm|apply)$/.test(text);
+    });
+    if (candidates.length === 0) return false;
+    clickLikeUser(candidates[0]);
+    return true;
+  }
+
+  async function clickPanelCell(panel, text, { unit = "" } = {}) {
     const normalizedTarget = normalizeText(text);
     const candidates = Array.from(
       panel.querySelectorAll(
@@ -2077,6 +3070,12 @@
       if (node.getAttribute?.("aria-disabled") === "true") return false;
       const className = String(node.className || "");
       if (/disabled/i.test(className)) return false;
+      if (
+        unit === "day" &&
+        /(prev-month|next-month|other-month|outside|adjacent|not-current)/i.test(className)
+      ) {
+        return false;
+      }
       return normalizeText(node.textContent || "") === normalizedTarget;
     });
 
@@ -2107,7 +3106,9 @@
 
   function parseDateParts(value) {
     const text = String(value || "").trim();
-    const match = text.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+    const match = text.match(
+      /^(\d{4})(?:[-/.年]\s*(\d{1,2}))?(?:(?:[-/.月]\s*(\d{1,2})\s*日?)|月)?$/
+    );
     if (!match) {
       return { year: 0, month: 0, day: 0 };
     }
@@ -2162,6 +3163,88 @@
     selectEl.dispatchEvent(new Event("change", { bubbles: true }));
     selectEl.dispatchEvent(new Event("input", { bubbles: true }));
     return true;
+  }
+
+  function getVisibleCustomPickerOptions() {
+    const selectors = activeSiteAdapter?.optionSelectors || siteAdapters?.DEFAULT_OPTION_SELECTORS || [];
+    if (selectors.length === 0) return [];
+
+    const selector = selectors.join(",");
+    return Array.from(document.querySelectorAll(selector))
+      .filter((el) => {
+        if (!isVisible(el) || el.getAttribute?.("aria-disabled") === "true") return false;
+        const className = String(el.className || "");
+        if (/disabled/i.test(className)) return false;
+        const text = normalizeText(el.textContent || "");
+        if (!text || text.length > 120) return false;
+        return !Array.from(el.children || []).some(
+          (child) => child.matches?.(selector) && normalizeText(child.textContent || "") === text
+        );
+      })
+      .map((el) => ({
+        el,
+        label: normalizeText(el.textContent || ""),
+        value: el.getAttribute?.("data-value") || el.getAttribute?.("value") || "",
+      }));
+  }
+
+  function customPickerValueMatches(runtime, desired, startValue = "") {
+    const normalizePickerValue = (value) =>
+      normalizeForMatch(value).replace(/特别行政区|自治区|自治州|省|市|区|县/g, "");
+    const target = normalizePickerValue(desired);
+    if (!target) return false;
+
+    const selectedText = String(
+      runtime?.pickerRoot?.querySelector?.(
+        "[class*='single_selected'],[class*='single-selected'],[class*='selected_label'],[class*='selected-label']"
+      )?.textContent || ""
+    ).trim();
+    const selected = normalizePickerValue(selectedText);
+    if (selected && (selected === target || selected.includes(target))) return true;
+
+    if (getVisibleCustomPickerOptions().length > 0) return false;
+    const currentValue = String(runtime?.el?.value || "").trim();
+    if (!currentValue || currentValue === startValue) return false;
+    const current = normalizePickerValue(currentValue);
+    return current === target || current.includes(target);
+  }
+
+  async function fillCustomPicker(runtime, desired) {
+    const input = runtime?.el;
+    if (!input) return false;
+
+    const startValue = String(input.value || "").trim();
+    scrollIntoView(input);
+    clickLikeUser(runtime.pickerRoot || input);
+    input.focus?.();
+
+    if (!runtime.readOnly) {
+      setNativeValue(input, desired);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await sleep(120);
+    } else {
+      await sleep(120);
+    }
+
+    const clickedOptions = new WeakSet();
+    let selectedAny = false;
+    for (let depth = 0; depth < 4; depth += 1) {
+      const options = getVisibleCustomPickerOptions().filter(
+        (option) => !clickedOptions.has(option.el)
+      );
+      const best = pickBestOption(options, desired);
+      if (!best) break;
+
+      clickedOptions.add(best.el);
+      clickLikeUser(best.el);
+      selectedAny = true;
+      await sleep(120);
+
+      if (customPickerValueMatches(runtime, desired, startValue)) return true;
+    }
+
+    if (!selectedAny) return false;
+    return customPickerValueMatches(runtime, desired, startValue);
   }
 
   async function safeCheck(inputEl, checked) {
@@ -2278,10 +3361,10 @@
   }
 
   function parseJsonFromAiText(text) {
-    const trimmed = String(text || "").trim();
+    const trimmed = normalizeAiJsonInput(text);
     if (!trimmed) throw new Error("AI 返回为空");
 
-    const direct = tryParseJson(trimmed);
+    const direct = tryParseJsonVariants(trimmed);
     if (direct.ok) return direct.value;
 
     const noFences = trimmed
@@ -2289,14 +3372,19 @@
       .replace(/```\s*/g, "")
       .trim();
 
-    const noFenceParsed = tryParseJson(noFences);
+    const noFenceParsed = tryParseJsonVariants(noFences);
     if (noFenceParsed.ok) return noFenceParsed.value;
 
-    const extracted = extractLikelyJson(noFences);
-    const extractedParsed = tryParseJson(extracted);
-    if (extractedParsed.ok) return extractedParsed.value;
+    for (const candidate of extractJsonCandidates(noFences)) {
+      const parsed = tryParseJsonVariants(candidate);
+      if (parsed.ok) return parsed.value;
+    }
 
     throw new Error("无法解析 AI 返回的 JSON");
+  }
+
+  function normalizeAiJsonInput(text) {
+    return String(text || "").replace(/^\uFEFF/, "").trim();
   }
 
   function tryParseJson(text) {
@@ -2305,6 +3393,37 @@
     } catch (_) {
       return { ok: false };
     }
+  }
+
+  function tryParseJsonVariants(text) {
+    const candidates = [String(text || "").trim(), sanitizeLikelyJson(text)];
+    const seen = new Set();
+
+    for (const candidate of candidates) {
+      const normalized = String(candidate || "").trim();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+
+      const parsed = tryParseJson(normalized);
+      if (parsed.ok) return parsed;
+    }
+
+    return { ok: false };
+  }
+
+  function sanitizeLikelyJson(text) {
+    return String(text || "")
+      .trim()
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'")
+      .replace(/,\s*([}\]])/g, "$1");
+  }
+
+  function extractJsonCandidates(text) {
+    const candidates = [extractLikelyJson(text), extractBalancedJson(text)];
+    return Array.from(
+      new Set(candidates.map((item) => String(item || "").trim()).filter(Boolean))
+    );
   }
 
   function extractLikelyJson(text) {
@@ -2329,6 +3448,58 @@
     return objCandidate || arrCandidate || text;
   }
 
+  function extractBalancedJson(text) {
+    const source = String(text || "");
+    let start = -1;
+    let inString = false;
+    let isEscaped = false;
+    const stack = [];
+
+    for (let index = 0; index < source.length; index += 1) {
+      const char = source[index];
+
+      if (start === -1) {
+        if (char === "{" || char === "[") {
+          start = index;
+          stack.push(char);
+        }
+        continue;
+      }
+
+      if (inString) {
+        if (isEscaped) {
+          isEscaped = false;
+          continue;
+        }
+        if (char === "\\") {
+          isEscaped = true;
+          continue;
+        }
+        if (char === '"') inString = false;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+      if (char === "{" || char === "[") {
+        stack.push(char);
+        continue;
+      }
+      if (char === "}" || char === "]") {
+        const last = stack[stack.length - 1];
+        const matchesPair =
+          (last === "{" && char === "}") || (last === "[" && char === "]");
+        if (!matchesPair) return "";
+        stack.pop();
+        if (stack.length === 0) return source.slice(start, index + 1);
+      }
+    }
+
+    return "";
+  }
+
   function createMappingCacheSignature(fields) {
     return fields.map((field, index) =>
       createStableCacheFieldSignature(field, index)
@@ -2349,9 +3520,13 @@
       index,
       kind: field.kind,
       inputType: field.inputType || "",
+      compositeRole: field.compositeRole || "",
       required: Boolean(field.required),
       sectionKey: normalizeCacheText(field.sectionKey || ""),
       sectionLabel: normalizeCacheText(field.sectionLabel || ""),
+      sectionItemIndex: Number.isInteger(field.sectionItemIndex)
+        ? field.sectionItemIndex
+        : -1,
       label: normalizeCacheText(field.label || ""),
       placeholder: normalizeCacheText(field.placeholder || ""),
       name: normalizeCacheText(field.name || ""),
@@ -2732,6 +3907,10 @@
     {
       key: "basic",
       values: ["basic", "基础", "初级"],
+    },
+    {
+      key: "provincialaward",
+      values: ["省级", "省市级", "市级"],
     },
   ];
 

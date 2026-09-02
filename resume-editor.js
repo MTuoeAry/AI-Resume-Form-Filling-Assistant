@@ -7,6 +7,11 @@ const importResumeBtn = document.getElementById("importResumeBtn");
 const uploadPdfBtn = document.getElementById("uploadPdfBtn");
 const resumePdfFileEl = document.getElementById("resumePdfFile");
 const pageStatusEl = document.getElementById("pageStatus");
+const assetGridEl = document.getElementById("assetGrid");
+const importResumeDocumentBtn = document.getElementById("importResumeDocumentBtn");
+const exportResumeDocumentBtn = document.getElementById("exportResumeDocumentBtn");
+const resumeDocumentFileEl = document.getElementById("resumeDocumentFile");
+const resumeDocumentImportModeEl = document.getElementById("resumeDocumentImportMode");
 
 const schema = window.ResumeSchema;
 if (!schema) {
@@ -33,6 +38,16 @@ if (!resumePrompts) {
   throw new Error("Resume prompts are not available");
 }
 
+const assetStorage = window.ResumeAssetStorage;
+if (!assetStorage) {
+  throw new Error("Resume asset storage is not available");
+}
+
+const profileDocument = window.ResumeProfileDocument;
+if (!profileDocument) {
+  throw new Error("Resume profile document helper is not available");
+}
+
 const RESUME_PROFILE_KEY = resumeStorage.keys.profile;
 const RESUME_SCHEMA_VERSION_KEY = resumeStorage.keys.schemaVersion;
 const RESUME_IMPORT_RAW_TEXT_KEY = resumeStorage.keys.rawText;
@@ -48,6 +63,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initResumeEditorEvents();
   await initModels();
   await loadResumeProfile();
+  await renderAssetManager();
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -71,6 +87,21 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 function initResumeEditorEvents() {
+  importResumeDocumentBtn?.addEventListener("click", () => {
+    resumeDocumentFileEl.value = "";
+    resumeDocumentFileEl.click();
+  });
+
+  exportResumeDocumentBtn?.addEventListener("click", () => {
+    exportPortableResumeDocument();
+  });
+
+  resumeDocumentFileEl?.addEventListener("change", async () => {
+    const file = resumeDocumentFileEl.files?.[0];
+    if (!file) return;
+    await importPortableResumeDocument(file, resumeDocumentImportModeEl.value);
+  });
+
   resumeNavEl.addEventListener("click", (event) => {
     const navBtn = event.target.closest("[data-resume-nav]");
     if (!navBtn) return;
@@ -98,6 +129,163 @@ function initResumeEditorEvents() {
       );
     }
   });
+
+  assetGridEl?.addEventListener("change", async (event) => {
+    const input = event.target.closest("input[type='file'][data-asset-kind]");
+    const file = input?.files?.[0];
+    if (!input || !file) return;
+
+    try {
+      await assetStorage.saveAsset(input.dataset.assetKind, file);
+      updatePageStatus("success", `已保存附件：${file.name}`);
+      await renderAssetManager();
+    } catch (error) {
+      updatePageStatus("error", `附件保存失败：${error.message}`);
+    }
+  });
+
+  assetGridEl?.addEventListener("click", async (event) => {
+    const removeButton = event.target.closest("[data-remove-asset]");
+    if (!removeButton) return;
+    await assetStorage.removeAsset(removeButton.dataset.removeAsset);
+    updatePageStatus("info", "已删除本机附件。");
+    await renderAssetManager();
+  });
+}
+
+async function renderAssetManager() {
+  if (!assetGridEl) return;
+  const records = await assetStorage.getAllAssets();
+  const byKind = new Map(records.map((record) => [record.kind, record]));
+  assetGridEl.replaceChildren();
+
+  for (const definition of assetStorage.ASSET_KINDS) {
+    const record = byKind.get(definition.id);
+    const card = document.createElement("div");
+    card.className = "asset-card";
+
+    const copy = document.createElement("div");
+    copy.className = "asset-card-copy";
+    const title = document.createElement("div");
+    title.className = "asset-card-title";
+    title.textContent = definition.label;
+    const meta = document.createElement("div");
+    meta.className = "asset-card-meta";
+    meta.textContent = record
+      ? `${record.name} · ${formatAssetBytes(record.size)}`
+      : "尚未配置";
+    copy.append(title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "asset-card-actions";
+    const chooseLabel = document.createElement("label");
+    chooseLabel.className = "btn btn-outline asset-choose-btn";
+    chooseLabel.textContent = record ? "更换" : "选择文件";
+    const input = document.createElement("input");
+    input.type = "file";
+    input.hidden = true;
+    input.accept = definition.accept;
+    input.dataset.assetKind = definition.id;
+    chooseLabel.appendChild(input);
+    actions.appendChild(chooseLabel);
+
+    if (record) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn-text asset-remove-btn";
+      remove.dataset.removeAsset = definition.id;
+      remove.textContent = "删除";
+      actions.appendChild(remove);
+    }
+
+    card.append(copy, actions);
+    assetGridEl.appendChild(card);
+  }
+}
+
+function formatAssetBytes(value) {
+  const bytes = Number(value || 0);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function exportPortableResumeDocument() {
+  try {
+    const currentProfile = syncResumeProfileFromForm();
+    const text = profileDocument.serializeDocument({
+      profile: currentProfile,
+      schemaVersion: schema.version,
+      extensionVersion: chrome.runtime.getManifest?.().version || "",
+    });
+    const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = profileDocument.buildFileName();
+    anchor.hidden = true;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    updatePageStatus("success", "便携简历文档已导出；附件、模型配置和 API Key 未包含在内。");
+  } catch (error) {
+    updatePageStatus("error", `简历文档导出失败：${error.message}`);
+  }
+}
+
+async function importPortableResumeDocument(file, mode = "merge") {
+  if (Number(file.size || 0) > 5 * 1024 * 1024) {
+    updatePageStatus("error", "简历文档不能超过 5 MB。");
+    return;
+  }
+
+  const replaceMode = mode === "replace";
+  if (
+    replaceMode &&
+    !window.confirm("完全替换会清空当前文档中未出现在导入文件里的字段，确定继续吗？")
+  ) {
+    updatePageStatus("info", "已取消完全替换导入。");
+    return;
+  }
+
+  importResumeDocumentBtn.disabled = true;
+  exportResumeDocumentBtn.disabled = true;
+  updatePageStatus("info", `正在${replaceMode ? "替换" : "合并"}导入便携简历文档...`);
+
+  try {
+    const parsed = profileDocument.parseDocument(await file.text(), {
+      currentSchemaVersion: schema.version,
+      normalizeProfile: schema.normalizeResumeProfile,
+    });
+    const currentProfile = syncResumeProfileFromForm();
+    const nextProfile = replaceMode
+      ? parsed.profile
+      : schema.normalizeResumeProfile(
+          profileDocument.mergeNonEmpty(currentProfile, parsed.profile)
+        );
+
+    resumeProfile = nextProfile;
+    await resumeStorage.saveResumeData({
+      profile: nextProfile,
+      schemaVersion: schema.version,
+      rawText: resumeImportTextEl.value.trim(),
+    });
+
+    resetCollapsedResumeSections();
+    renderResumeEditor(nextProfile);
+    isResumeDirty = false;
+    saveResumeBtn.disabled = true;
+    updatePageStatus(
+      "success",
+      `${replaceMode ? "替换" : "合并"}导入完成并已保存${parsed.sourceSchemaVersion && parsed.sourceSchemaVersion < schema.version ? `；已从 Schema v${parsed.sourceSchemaVersion} 迁移到 v${schema.version}` : ""}。`
+    );
+  } catch (error) {
+    updatePageStatus("error", `简历文档导入失败：${error.message}`);
+  } finally {
+    importResumeDocumentBtn.disabled = false;
+    exportResumeDocumentBtn.disabled = false;
+  }
 }
 
 async function initModels() {
@@ -230,7 +418,7 @@ function renderResumeEditor(profile) {
               )}</div>
             </div>
             ${
-              items.length > Math.max(1, Number(section.initialItems) || 1)
+              items.length > schema.getListSectionMinItems(section)
                 ? `
                   <button
                     type="button"
@@ -407,7 +595,7 @@ function createResumeNavSummary(section, stats) {
   return `${stats.filledFields}/${stats.totalFields} 项`;
 }
 
-function collectResumeProfileFromForm() {
+function collectResumeProfileFromForm({ normalize = true } = {}) {
   const nextProfile = schema.createEmptyResumeProfile();
   const controls = resumeFormHost.querySelectorAll("[data-resume-path]");
 
@@ -419,11 +607,11 @@ function collectResumeProfileFromForm() {
     );
   });
 
-  return schema.normalizeResumeProfile(nextProfile);
+  return normalize ? schema.normalizeResumeProfile(nextProfile) : nextProfile;
 }
 
-function syncResumeProfileFromForm() {
-  resumeProfile = collectResumeProfileFromForm();
+function syncResumeProfileFromForm(options) {
+  resumeProfile = collectResumeProfileFromForm(options);
   return resumeProfile;
 }
 
@@ -483,15 +671,15 @@ function addResumeListItem(sectionKey) {
   const section = schema.getSectionDefinition(sectionKey);
   if (!section || section.type !== "list") return;
 
-  const nextProfile = syncResumeProfileFromForm();
+  const nextProfile = syncResumeProfileFromForm({ normalize: false });
   const items = Array.isArray(nextProfile[sectionKey]) ? [...nextProfile[sectionKey]] : [];
   if (items.length >= section.slots) return;
 
   items.push(schema.createEmptyListItem(sectionKey));
-  resumeProfile = schema.normalizeResumeProfile({
+  resumeProfile = {
     ...nextProfile,
     [sectionKey]: items,
-  });
+  };
 
   collapsedResumeSections.delete(sectionKey);
   renderResumeEditor(resumeProfile);
@@ -508,8 +696,8 @@ function removeResumeListItem(sectionKey, itemIndex) {
   const section = schema.getSectionDefinition(sectionKey);
   if (!section || section.type !== "list") return;
 
-  const minItems = Math.max(1, Number(section.initialItems) || 1);
-  const nextProfile = syncResumeProfileFromForm();
+  const minItems = schema.getListSectionMinItems(section);
+  const nextProfile = syncResumeProfileFromForm({ normalize: false });
   const items = Array.isArray(nextProfile[sectionKey]) ? [...nextProfile[sectionKey]] : [];
 
   if (items.length <= minItems) return;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI简历填表助手",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "粘贴简历文本，AI解析并自动填写网页表单（不自动提交）",
   "minimum_chrome_version": "114",
   "permissions": [

@@ -14,6 +14,7 @@ test("popup fallback injection includes all shared content helpers", () => {
   assert.match(source, /shared\/field-text\.js/);
   assert.match(source, /shared\/field-semantics\.js/);
   assert.match(source, /shared\/fill-runtime\.js/);
+  assert.match(source, /shared\/site-adapters\.js/);
   assert.match(source, /shared\/content-bridge\.js/);
   assert.match(source, /shared\/ai-client\.js/);
   assert.match(source, /content\.js/);
