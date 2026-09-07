@@ -56,6 +56,8 @@ test("date component navigation uses explicit year/month controls and ignores ad
   assert.match(source, /prev-month\|next-month\|other-month/);
   assert.match(source, /clickDatePanelConfirmation/);
   assert.match(source, /inferVisibleDatePanelPrecision/);
-  assert.match(source, /panelPrecision === "month"/);
+  assert.match(source, /targetPrecision === "month"/);
+  assert.match(source, /targetPrecision === "year"/);
+  assert.match(source, /year\[-_ \]\?panel/);
   assert.match(source, /refreshRuntimeElement\(runtime\)/);
 });

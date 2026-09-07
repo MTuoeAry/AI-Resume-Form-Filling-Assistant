@@ -550,7 +550,9 @@ function hasMeaningfulResumeValue(value) {
 }
 
 function countFilledSummaryItems(profile) {
-  return schema.getCatalogWithValues(profile).filter((field) => field.hasValue).length;
+  return schema
+    .getCatalogWithValues(profile)
+    .filter((field) => field.hasValue && !field.derived).length;
 }
 
 function buildResumeSectionStats(profile) {

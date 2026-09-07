@@ -51,9 +51,11 @@
   const activeSiteAdapter = siteAdapters?.getActiveAdapter?.(location) || null;
 
   const EXT_TAG = "[简历填表助手]";
-  const MAPPING_CACHE_KEY = "fieldMappingCacheV8";
+  const MAPPING_CACHE_KEY = "fieldMappingCacheV13";
+  const COMPOSITE_PICKER_SELECTOR =
+    '[role="combobox"],[aria-haspopup="listbox"],[aria-haspopup="tree"]';
   const CONTROL_SELECTOR =
-    'input, textarea, select, button, option, svg, path, style, script, noscript, [contenteditable="true"], [contenteditable=""], [aria-hidden="true"]';
+    `input, textarea, select, button, option, svg, path, style, script, noscript, [contenteditable="true"], [contenteditable=""], [aria-hidden="true"], ${COMPOSITE_PICKER_SELECTOR}`;
   const LABEL_LIKE_SELECTOR =
     '[class*="label"],[class*="Label"],[class*="title"],[class*="Title"],[class*="name"],[class*="Name"],[class*="caption"],[class*="Caption"],[class*="header"],[class*="Header"],label,legend,dt,th';
   const HEADING_LIKE_SELECTOR =
@@ -101,6 +103,17 @@
     "cancel",
     "close",
   ];
+  const DORMANT_EDITOR_ACTION_TEXTS = [
+    "编辑",
+    "修改",
+    "完善",
+    "edit",
+    "modify",
+    "update",
+  ];
+  const GENERIC_REPEAT_ADD_TEXTS = ["添加", "新增", "增加", "add", "new"];
+  const GENERIC_REPEAT_TRIGGER_SELECTOR =
+    "button:not([type='submit']),[role='button'],a,span,div[class],div[id]";
   const DEEP_SCAN_SECTION_MAP = [
     { patterns: ["教育", "学校", "专业", "学历", "学位", "毕业"], sectionKey: "educations" },
     { patterns: ["实习"], sectionKey: "internships" },
@@ -118,6 +131,8 @@
 
   const fieldRuntimeMap = new Map();
   const radioScopeIds = new WeakMap();
+  const repeatControlItemIndexes = new WeakMap();
+  const pendingRepeatItemIndexes = new WeakMap();
   let radioScopeSequence = 0;
 
   let lastFieldCount = 0;
@@ -150,9 +165,12 @@
     }
 
     if (action === "startFill") {
-    handleStartFill(message.modelId, message.resumeProfile, {
+      handleStartFill(message.modelId, message.resumeProfile, {
         fillMode: message.fillMode,
         scope: message.scope,
+        actionKey: message.actionKey,
+        requestId: message.requestId,
+        resumeAssets: message.resumeAssets,
       })
         .then((result) => sendResponse(result))
         .catch((error) =>
@@ -163,8 +181,16 @@
   });
 
   async function handleStartFill(modelId, resumeProfile, request = {}) {
+    const execution = {
+      requestId: String(request?.requestId || ""),
+      actionKey: String(request?.actionKey || ""),
+      fillMode: request?.fillMode === "incremental" ? "incremental" : "overwrite",
+      scope: request?.scope === "selection" ? "selection" : "page",
+      contentScriptVersion: contentBridge.CONTENT_SCRIPT_VERSION,
+    };
+
     if (isWorking) {
-      return { success: false, message: "正在执行中，请稍后再试" };
+      return { success: false, message: "正在执行中，请稍后再试", execution };
     }
 
     isWorking = true;
@@ -174,9 +200,14 @@
         throw new Error("标准简历为空：请先在侧边栏填写或导入标准简历");
       }
 
-      const fillMode = request?.fillMode === "incremental" ? "incremental" : "overwrite";
-      const scope = request?.scope === "selection" ? "selection" : "page";
+      const fillMode = execution.fillMode;
+      const scope = execution.scope;
       let selectionRect = null;
+
+      sendLog(
+        "info",
+        `[运行参数] action=${execution.actionKey || "unknown"} mode=${fillMode} scope=${scope} content=${execution.contentScriptVersion} request=${execution.requestId || "unknown"}`
+      );
 
       if (scope === "selection") {
         sendLog("info", "已进入选区模式：请在页面上拖拽框选要填写的区域。");
@@ -186,6 +217,7 @@
             success: false,
             canceled: true,
             message: "已取消选区填入",
+            execution,
           };
         }
         sendLog(
@@ -201,6 +233,10 @@
         await ensureRepeatableSections(resumeProfile);
         sendLog("info", "正在探索页面上的可展开区块...");
         await triggerExpandableSections(resumeProfile);
+        if (countControls(document) === 0) {
+          sendLog("info", "正在检查是否为分区编辑式简历页面...");
+          await activateDormantEditor(resumeProfile);
+        }
       }
 
       sendLog(
@@ -208,6 +244,9 @@
         scope === "selection" ? "开始扫描选区内表单字段..." : "开始扫描当前页面表单字段..."
       );
       const scan = scanFields({ scope, selectionRect });
+      if (fillMode === "incremental") {
+        alignIncrementalRepeatSourceIndexes(scan, resumeProfile);
+      }
 
       lastFieldCount = scan.fields.length;
       lastMappedCount = 0;
@@ -231,6 +270,7 @@
             scope === "selection"
               ? "选区内未识别到可填写字段，请重新框选后再试"
               : "未识别到可填写字段，请确认当前页面包含表单",
+          execution,
         };
       }
 
@@ -246,7 +286,7 @@
       });
       const cachedEntry = cacheLookup.entry;
       if (cachedEntry?.mappings?.length) {
-        mappings = normalizeMappings(cachedEntry.mappings, scan.fields);
+        mappings = normalizeMappings(cachedEntry.mappings, scan.fields, resumeProfile);
         cacheHit = true;
         sendLog("info", "已命中本地字段映射缓存，跳过模型调用。");
       } else {
@@ -256,7 +296,7 @@
           `已识别 ${lastFieldCount} 个字段，正在调用 AI 建立字段映射...`
         );
 
-        const localMappings = normalizeMappings([], scan.fields);
+        const localMappings = normalizeMappings([], scan.fields, resumeProfile);
         const locallyMappedIds = new Set(
           localMappings
             .filter((mapping) => Boolean(mapping.resumePath))
@@ -281,7 +321,7 @@
           try {
             const parsed = parseJsonFromAiText(aiText);
             const rawMappings = Array.isArray(parsed) ? parsed : parsed?.mappings;
-            mappings = normalizeMappings(rawMappings, scan.fields);
+            mappings = normalizeMappings(rawMappings, scan.fields, resumeProfile);
           } catch (parseError) {
             mappings = localMappings;
             shouldCacheMappings = false;
@@ -488,6 +528,7 @@
         attemptedCount,
         failedCount,
         cacheHit,
+        execution,
       };
     } finally {
       isWorking = false;
@@ -626,6 +667,134 @@
     });
   }
 
+  function countPotentialEditableControls(root) {
+    if (!root?.querySelectorAll) return 0;
+    return Array.from(
+      root.querySelectorAll(
+        'input,textarea,select,[contenteditable="true"],[contenteditable=""]'
+      )
+    ).filter((el) => {
+      if (el.disabled || el.getAttribute?.("aria-disabled") === "true") return false;
+      const type = String(el.getAttribute?.("type") || "").toLowerCase();
+      return ![
+        "hidden",
+        "file",
+        "password",
+        "submit",
+        "button",
+        "reset",
+        "image",
+      ].includes(type);
+    }).length;
+  }
+
+  function isDormantEditorAction(el) {
+    if (!el || !isVisible(el)) return false;
+    if (el.disabled || el.getAttribute?.("aria-disabled") === "true") return false;
+    const className = normalizeDeepScanText(el.className || "");
+    if (/(^|[-_])unedit(?:able)?([-_]|$)/.test(className)) return false;
+
+    const text = getDeepScanText(el);
+    if (!DORMANT_EDITOR_ACTION_TEXTS.includes(text)) return false;
+    return !Array.from(el.children || []).some((child) =>
+      DORMANT_EDITOR_ACTION_TEXTS.includes(getDeepScanText(child))
+    );
+  }
+
+  function findDormantEditorRoot(action) {
+    let current = action?.parentElement || null;
+    for (let depth = 0; current && depth < 10; depth += 1) {
+      const potentialControls = countPotentialEditableControls(current);
+      if (potentialControls >= 2) {
+        const actionTexts = Array.from(
+          current.querySelectorAll("button,[role='button'],a,span,div")
+        ).map(getDeepScanText);
+        const hasCommitAction = actionTexts.some((text) =>
+          ["保存", "确定", "完成", "save", "confirm", "done"].includes(text)
+        );
+        const hasCancelAction = actionTexts.some((text) =>
+          ["取消", "关闭", "cancel", "close"].includes(text)
+        );
+        if (hasCommitAction || hasCancelAction) return current;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  function getDormantEditorSection(action, root) {
+    const titleCandidates = [];
+    const header = action?.closest?.(
+      "header,[class*='header'],[class*='Header'],[class*='title'],[class*='Title']"
+    );
+    if (header) titleCandidates.push(getDeepScanText(header));
+    for (const node of Array.from(
+      root?.querySelectorAll?.(
+        "h1,h2,h3,h4,h5,h6,legend,[role='heading'],[class*='header'],[class*='Header'],[class*='title'],[class*='Title']"
+      ) || []
+    ).slice(0, 8)) {
+      titleCandidates.push(getDeepScanText(node));
+    }
+    return fieldSemantics.inferSectionFromTexts?.(titleCandidates) || {
+      key: "",
+      label: "",
+      evidence: "",
+      score: 0,
+    };
+  }
+
+  function findDormantEditorTrigger(resumeProfile) {
+    const candidates = Array.from(
+      document.querySelectorAll(
+        "button:not([type='submit']),[role='button'],a,span,div[class],div[id]"
+      )
+    )
+      .filter(isDormantEditorAction)
+      .map((action, documentIndex) => {
+        const root = findDormantEditorRoot(action);
+        if (!root || countControls(root) > 0) return null;
+        const section = getDormantEditorSection(action, root);
+        const schemaSectionKey = fieldSemantics.getSchemaSectionKey?.(section.key) || "";
+        const profileMatches = schemaSectionKey
+          ? hasSectionContent(resumeProfile, schemaSectionKey)
+          : false;
+        const parentClass = normalizeDeepScanText(action.parentElement?.className || "");
+        const actionId = normalizeDeepScanText(action.id || action.parentElement?.id || "");
+        let score = Number(section.score || 0) * 5;
+        if (profileMatches) score += 100;
+        if (/header|title/.test(parentClass)) score += 35;
+        if (/edit|modify|update/.test(actionId)) score += 15;
+        if (getDeepScanText(action) === "编辑" || getDeepScanText(action) === "edit") {
+          score += 5;
+        }
+        score -= documentIndex / 1000;
+        return { action, root, section, score, profileMatches };
+      })
+      .filter(Boolean)
+      .filter((item) => item.profileMatches || !item.section.key)
+      .sort((left, right) => right.score - left.score);
+
+    return candidates[0] || null;
+  }
+
+  async function activateDormantEditor(resumeProfile) {
+    if (countControls(document) > 0) return false;
+    const candidate = findDormantEditorTrigger(resumeProfile);
+    if (!candidate) return false;
+
+    const startCount = countControls(document);
+    scrollIntoView(candidate.action);
+    clickLikeUser(candidate.action);
+    const opened = await waitForNewFields(startCount);
+    if (opened) {
+      sendLog(
+        "success",
+        `已进入${candidate.section.label || "当前"}区块的编辑状态；该页面采用分区编辑，填充后请先核对再保存。`
+      );
+    }
+    return opened;
+  }
+
   async function waitForNewFields(startCount) {
     if (countControls(document) > startCount) return true;
 
@@ -677,6 +846,39 @@
     });
   }
 
+  function hasVisibleRepeatSection(rule) {
+    if (findRepeatSectionTrigger(rule)) return true;
+    const expectedTexts = (rule?.sectionTexts || [])
+      .map(normalizeDeepScanText)
+      .filter(Boolean);
+    if (expectedTexts.length === 0) return false;
+
+    const candidates = document.querySelectorAll(
+      "h1,h2,h3,h4,h5,h6,legend,[role='heading'],[class*='title'],[class*='Title'],[class*='header'],[class*='Header'],nav a,nav span"
+    );
+    return Array.from(candidates).some((el) =>
+      isVisible(el) && expectedTexts.includes(getDeepScanText(el))
+    );
+  }
+
+  function buildPageExperienceProjection(resumeProfile, rules) {
+    const sectionFields = [];
+    const semanticKeyBySchemaKey = {
+      internships: "internship",
+      workExperiences: "work",
+    };
+    for (const rule of rules || []) {
+      const semanticKey = semanticKeyBySchemaKey[rule?.sectionKey];
+      if (semanticKey && hasVisibleRepeatSection(rule)) {
+        sectionFields.push({ sectionKey: semanticKey });
+      }
+    }
+    return fieldSemantics.buildWorkOnlyExperienceProjection?.(
+      sectionFields,
+      resumeProfile
+    ) || [];
+  }
+
   function isSafeRepeatTrigger(el, expectedTexts) {
     if (!el || !isVisible(el)) return false;
     if (el.disabled || el.getAttribute?.("aria-disabled") === "true") return false;
@@ -688,23 +890,51 @@
     );
   }
 
+  function repeatRootMatchesSection(root, rule) {
+    const expectedTexts = (rule?.sectionTexts || [])
+      .map(normalizeDeepScanText)
+      .filter(Boolean);
+    if (!root || expectedTexts.length === 0) return false;
+
+    const titleSelector =
+      activeSiteAdapter?.repeatSectionTitleSelector ||
+      "h1,h2,h3,h4,h5,h6,legend,[role='heading'],[class*='header'],[class*='Header'],[class*='title'],[class*='Title']";
+    return Array.from(root.querySelectorAll(titleSelector)).some((title) => {
+      const titleText = getDeepScanText(title);
+      return expectedTexts.some(
+        (expectedText) =>
+          titleText === expectedText || titleText.startsWith(expectedText)
+      );
+    });
+  }
+
+  function isContextualRepeatAddTrigger(el) {
+    if (!el || !isVisible(el)) return false;
+    if (el.disabled || el.getAttribute?.("aria-disabled") === "true") return false;
+    if (String(el.getAttribute?.("type") || "").toLowerCase() === "submit") {
+      return false;
+    }
+    return GENERIC_REPEAT_ADD_TEXTS.includes(getDeepScanText(el));
+  }
+
   function findRepeatSectionTrigger(rule) {
     const selector =
       activeSiteAdapter?.repeatTriggerSelector ||
-      "button:not([type='submit']),[role='button'],a,[class*='action_button'],[class*='action-button'],[class*='add']";
+      GENERIC_REPEAT_TRIGGER_SELECTOR;
     const candidates = Array.from(document.querySelectorAll(selector)).filter((el) => {
-      if (!isSafeRepeatTrigger(el, rule?.triggerTexts)) return false;
-      if (!Array.isArray(rule?.sectionTexts) || rule.sectionTexts.length === 0) return true;
+      const explicitMatch = isSafeRepeatTrigger(el, rule?.triggerTexts);
+      const contextualMatch = isContextualRepeatAddTrigger(el);
+      if (!explicitMatch && !contextualMatch) return false;
 
-      const root = getRepeatSectionRoot(el);
-      const titleSelector =
-        activeSiteAdapter?.repeatSectionTitleSelector || "h1,h2,h3,h4,h5,h6,legend";
-      const titleText = Array.from(root.querySelectorAll(titleSelector))
-        .map((title) => getDeepScanText(title))
-        .join(" ");
-      return rule.sectionTexts.some((text) =>
-        titleText.includes(normalizeDeepScanText(text))
-      );
+      const root = getRepeatSectionRoot(el, rule);
+      if (contextualMatch && !repeatRootMatchesSection(root, rule)) return false;
+      if (
+        !activeSiteAdapter?.requireRepeatSectionTitle ||
+        !Array.isArray(rule?.sectionTexts) ||
+        rule.sectionTexts.length === 0
+      ) return true;
+
+      return repeatRootMatchesSection(root, rule);
     });
     return candidates.sort((left, right) => {
       if (left.contains?.(right)) return 1;
@@ -713,9 +943,33 @@
     })[0] || null;
   }
 
-  function getRepeatSectionRoot(trigger) {
+  function getRepeatSectionRoot(trigger, rule = null) {
+    if (activeSiteAdapter?.repeatSectionSelector) {
+      const adapterRoot = trigger?.closest?.(activeSiteAdapter.repeatSectionSelector);
+      if (adapterRoot) return adapterRoot;
+    }
+
+    const expectedLabels = (rule?.rowLabels || [])
+      .map(normalizeDeepScanText)
+      .filter(Boolean);
+    const expectedSections = (rule?.sectionTexts || [])
+      .map(normalizeDeepScanText)
+      .filter(Boolean);
+    let current = trigger?.parentElement || null;
+    for (let depth = 0; current && depth < 9; depth += 1) {
+      const text = getDeepScanText(current);
+      const containsRowLabel = expectedLabels.some((label) => text.includes(label));
+      const containsSection = expectedSections.some((label) => text.includes(label));
+      if (
+        (containsRowLabel || containsSection) &&
+        (countControls(current) >= 2 || countPotentialEditableControls(current) >= 2)
+      ) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+
     const selector =
-      activeSiteAdapter?.repeatSectionSelector ||
       "section,fieldset,[class*='resume-block'],[class*='section'],[class*='module']";
     return trigger?.closest?.(selector) || trigger?.parentElement || document;
   }
@@ -723,6 +977,11 @@
   function inferRepeatItemIndex(el, semanticSectionKey) {
     const schemaSectionKey = fieldSemantics.getSchemaSectionKey?.(semanticSectionKey);
     if (!el || !schemaSectionKey) return -1;
+
+    const preparedIndex = repeatControlItemIndexes.get(el);
+    if (Number.isInteger(preparedIndex) && preparedIndex >= 0) {
+      return preparedIndex;
+    }
 
     const identifierIndex = inferRepeatItemIndexFromIdentifier(el, schemaSectionKey);
 
@@ -733,10 +992,10 @@
 
     const triggerSelector =
       activeSiteAdapter?.repeatTriggerSelector ||
-      "button:not([type='submit']),[role='button'],a,[class*='action_button'],[class*='action-button'],[class*='add']";
+      GENERIC_REPEAT_TRIGGER_SELECTOR;
     const matchingRoots = Array.from(document.querySelectorAll(triggerSelector))
       .filter((candidate) => isSafeRepeatTrigger(candidate, rule.triggerTexts))
-      .map((trigger) => getRepeatSectionRoot(trigger))
+      .map((trigger) => getRepeatSectionRoot(trigger, rule))
       .filter((root) => root && root.contains?.(el))
       .sort((left, right) => {
         if (left === right) return 0;
@@ -812,7 +1071,7 @@
   }
 
   function countRenderedRepeatItems(trigger, rule) {
-    const root = getRepeatSectionRoot(trigger);
+    const root = getRepeatSectionRoot(trigger, rule);
     const expectedLabels = new Set(
       (rule?.rowLabels || []).map(normalizeDeepScanText).filter(Boolean)
     );
@@ -828,13 +1087,30 @@
         .filter((index) => Number.isInteger(index) && index >= 0)
     );
 
-    return Math.max(labelCount, identifierIndexes.size);
+    const visibleItemEditCount = Array.from(
+      root.querySelectorAll("button:not([type='submit']),[role='button'],a,span,div[class]")
+    ).filter((el) => {
+      if (!isDormantEditorAction(el)) return false;
+      const header = el.closest?.(
+        "header,[class*='header'],[class*='Header'],[class*='title'],[class*='Title']"
+      );
+      return !header;
+    }).length;
+
+    const pendingIndex = pendingRepeatItemIndexes.get(root);
+    const hasVisibleEditorControls = countControls(root) > 0;
+    const pendingCount =
+      hasVisibleEditorControls && Number.isInteger(pendingIndex) && pendingIndex >= 0
+        ? pendingIndex + 1
+        : 0;
+
+    return Math.max(labelCount, identifierIndexes.size, visibleItemEditCount, pendingCount);
   }
 
   async function waitForRepeatItem(trigger, rule, startRows, startControls) {
     if (
       countRenderedRepeatItems(trigger, rule) > startRows ||
-      countControls(getRepeatSectionRoot(trigger)) > startControls
+      countControls(getRepeatSectionRoot(trigger, rule)) > startControls
     ) {
       return true;
     }
@@ -843,7 +1119,7 @@
       let settled = false;
       let pollTimer = null;
       let timeoutTimer = null;
-      const root = getRepeatSectionRoot(trigger);
+      const root = getRepeatSectionRoot(trigger, rule);
       const observer = typeof MutationObserver === "function" ? new MutationObserver(check) : null;
 
       function finish(found) {
@@ -869,11 +1145,26 @@
 
   async function ensureRepeatableSections(resumeProfile) {
     const rules = siteAdapters?.getRepeatRules?.(location) || [];
+    const workOnlyExperienceProjection = buildPageExperienceProjection(
+      resumeProfile,
+      rules
+    );
     let totalClicks = 0;
 
     for (const rule of rules) {
+      if (
+        workOnlyExperienceProjection.length > 0 &&
+        rule.sectionKey === "internships"
+      ) {
+        continue;
+      }
+      const sourceCount =
+        workOnlyExperienceProjection.length > 0 &&
+        rule.sectionKey === "workExperiences"
+          ? workOnlyExperienceProjection.length
+          : getMeaningfulProfileItems(resumeProfile, rule.sectionKey).length;
       const desiredCount = Math.min(
-        getMeaningfulProfileItems(resumeProfile, rule.sectionKey).length,
+        sourceCount,
         REPEAT_SECTION_ITEM_CAP
       );
       if (desiredCount === 0 || totalClicks >= REPEAT_SECTION_MAX_CLICKS) continue;
@@ -890,21 +1181,38 @@
       let renderedCount = countRenderedRepeatItems(trigger, rule);
       sendLog(
         "info",
-        `重复区块计划：${rule.sectionKey} 简历=${desiredCount} 条，页面=${renderedCount} 条`
+        `重复区块计划：${rule.sectionKey} 简历=${desiredCount} 条，页面=${renderedCount} 条${
+          workOnlyExperienceProjection.length > 0 && rule.sectionKey === "workExperiences"
+            ? "（实习经历临时投影到页面唯一的工作经历区块）"
+            : ""
+        }`
       );
       while (
         renderedCount < desiredCount &&
         totalClicks < REPEAT_SECTION_MAX_CLICKS
       ) {
-        const root = getRepeatSectionRoot(trigger);
+        if (!isVisible(trigger)) {
+          sendLog(
+            "info",
+            `“${rule.sectionKey}”采用逐条编辑模式，当前条目填充后请核对并保存，再继续下一条`
+          );
+          break;
+        }
+        const root = getRepeatSectionRoot(trigger, rule);
         const startControls = countControls(root);
+        const preparedItemIndex = renderedCount;
+        pendingRepeatItemIndexes.set(root, preparedItemIndex);
         scrollIntoView(trigger);
         clickLikeUser(trigger);
         totalClicks += 1;
 
         const added = await waitForRepeatItem(trigger, rule, renderedCount, startControls);
+        for (const control of collectControls(root)) {
+          repeatControlItemIndexes.set(control, preparedItemIndex);
+        }
         const nextCount = countRenderedRepeatItems(trigger, rule);
         if (!added || nextCount <= renderedCount) {
+          pendingRepeatItemIndexes.delete(root);
           sendLog(
             "warning",
             `未能继续新增“${rule.sectionKey}”区块，已停止自动点击以避免误操作`
@@ -1008,7 +1316,7 @@
     }
   }
 
-  function normalizeMappings(rawMappings, fields) {
+  function normalizeMappings(rawMappings, fields, resumeProfile = null) {
     const validFieldIds = new Set(fields.map((field) => String(field.fieldId)));
     const fieldById = new Map(fields.map((field) => [String(field.fieldId), field]));
     const validResumePaths = new Set(
@@ -1022,6 +1330,8 @@
       }
     }
     const normalized = [];
+    const experienceProjection =
+      fieldSemantics.buildWorkOnlyExperienceProjection?.(fields, resumeProfile) || [];
 
     for (const field of fields) {
       const fieldId = String(field?.fieldId || "").trim();
@@ -1033,18 +1343,28 @@
         requestedResumePath && validResumePaths.has(requestedResumePath)
           ? requestedResumePath
           : "";
-      const preferredResumePath = fieldSemantics.resolvePreferredResumePath?.(
+      const semanticField = fieldSemantics.projectWorkFieldToExperienceSource?.(
         fieldById.get(fieldId),
+        experienceProjection
+      ) || fieldById.get(fieldId);
+      const preferredResumePath = fieldSemantics.resolvePreferredResumePath?.(
+        semanticField,
         validResumePath,
         validResumePaths
       ) || "";
-      const resumePath =
+      const candidateResumePath =
         preferredResumePath ||
         fieldSemantics.alignResumePathToFieldSection(
           validResumePath,
           fieldById.get(fieldId)?.sectionKey || "",
           validResumePaths
         );
+      const unsupportedReason = fieldSemantics.getUnsupportedMappingReason?.(semanticField) || "";
+      const isCompatible = fieldSemantics.isResumePathCompatibleWithField?.(
+        semanticField,
+        candidateResumePath
+      ) !== false;
+      const resumePath = unsupportedReason || !isCompatible ? "" : candidateResumePath;
       const wasSectionCorrected = Boolean(
         validResumePath && resumePath && resumePath !== validResumePath
       );
@@ -1056,7 +1376,11 @@
         fieldId,
         resumePath,
         reason: `${String(item?.reason || "").trim()}${
-          wasDeterministicallyMapped
+          unsupportedReason
+            ? `；已跳过：${unsupportedReason}`
+            : !isCompatible
+            ? "；已阻止与目标控件语义或类型不兼容的映射"
+            : wasDeterministicallyMapped
             ? "；已按区块、条目序号和字段标签确定映射"
             : wasSectionCorrected
             ? "；已按页面区块纠正映射"
@@ -1110,6 +1434,12 @@
   function deriveFillValue(rawValue, transform, runtime) {
     if (!hasSourceValue(rawValue)) {
       return "";
+    }
+
+    const targetDateComponent = fillRuntime.inferRuntimeDateComponent?.(runtime) || "";
+    if (targetDateComponent) {
+      const componentValue = getDatePart(rawValue, targetDateComponent);
+      if (componentValue) return componentValue;
     }
 
     const normalizedTransform = normalizeTransform(transform);
@@ -1343,11 +1673,18 @@
       if (!isFillableElement(el)) continue;
 
       const tag = el.tagName.toLowerCase();
+      const isCompositePicker = isCompositePickerRoot(el);
       const baseInputType = tag === "input"
         ? String(el.getAttribute("type") || "text").toLowerCase()
         : "";
       const semanticMeta = buildFieldSemanticMeta(el, {
-        kind: tag === "textarea" ? "textarea" : tag === "select" ? "select" : "text",
+        kind: isCompositePicker
+          ? "custom_picker"
+          : tag === "textarea"
+            ? "textarea"
+            : tag === "select"
+              ? "select"
+              : "text",
         inputType: baseInputType,
       });
       const commonMeta = {
@@ -1359,6 +1696,33 @@
         sectionItemIndex: semanticMeta.sectionItemIndex,
         nearbyLabels: semanticMeta.nearbyLabels,
       };
+
+      if (isCompositePicker) {
+        const fieldId = `f_${++idSeq}`;
+        const pickerRuntime = buildCompositePickerRuntime(
+          fieldId,
+          el,
+          baseInputType,
+          semanticMeta
+        );
+        fields.push({
+          fieldId,
+          kind: "custom_picker",
+          inputType: pickerRuntime.inputType,
+          label: pickerRuntime.displayLabel || semanticMeta.label,
+          baseLabel: semanticMeta.label,
+          compositeRole: pickerRuntime.compositeRole || "",
+          compositeIndex: pickerRuntime.compositeIndex,
+          compositeCount: pickerRuntime.compositeCount,
+          name: pickerRuntime.name,
+          id: pickerRuntime.id,
+          placeholder: pickerRuntime.placeholder,
+          options: [],
+          ...commonMeta,
+        });
+        runtime.push(pickerRuntime);
+        continue;
+      }
 
       if (tag === "select") {
         const fieldId = `f_${++idSeq}`;
@@ -1381,9 +1745,15 @@
         runtime.push({
           fieldId,
           kind: "select",
+          inputType: "select-one",
           el,
           id: el.id || "",
           name: el.getAttribute("name") || "",
+          label: semanticMeta.label || "",
+          context: semanticMeta.context || "",
+          nearbyLabels: semanticMeta.nearbyLabels || [],
+          placeholder: "",
+          hasCalendarIcon: false,
         });
         continue;
       }
@@ -1599,6 +1969,8 @@
       });
     }
 
+    assignFallbackRepeatItemIndexes(fields);
+
     if (scope === "selection" && selectionRect) {
       const allowedFieldIds = new Set();
 
@@ -1615,6 +1987,191 @@
     }
 
     return { fields, runtime };
+  }
+
+  function assignFallbackRepeatItemIndexes(fields) {
+    const repeatSections = new Set([
+      "education", "internship", "work", "project", "campus",
+      "certificate", "language", "award", "patent", "publication",
+    ]);
+    const occurrences = new Map();
+
+    for (const field of Array.isArray(fields) ? fields : []) {
+      if (!repeatSections.has(String(field?.sectionKey || ""))) continue;
+      if (Number.isInteger(field?.sectionItemIndex) && field.sectionItemIndex >= 0) {
+        continue;
+      }
+
+      const semanticFieldKey = fieldSemantics.inferStructuredFieldKeyFromField?.(
+        field,
+        field.sectionKey
+      );
+      const fallbackLabelKey = normalizeDeepScanText(
+        field?.baseLabel || field?.label || field?.id || field?.name || ""
+      );
+      const occurrenceFieldKey = semanticFieldKey || fallbackLabelKey;
+      if (!occurrenceFieldKey) continue;
+      const occurrenceKey = `${field.sectionKey}:${occurrenceFieldKey}`;
+      const nextIndex = occurrences.get(occurrenceKey) || 0;
+      field.sectionItemIndex = nextIndex;
+      occurrences.set(occurrenceKey, nextIndex + 1);
+    }
+  }
+
+  const INCREMENTAL_REPEAT_ANCHOR_KEYS = Object.freeze({
+    education: ["school", "major"],
+    internship: ["title", "company"],
+    work: ["title", "company"],
+    project: ["name"],
+    campus: ["organization", "role"],
+    certificate: ["name", "credentialId"],
+    language: ["name"],
+    award: ["name"],
+    patent: ["name", "number"],
+    publication: ["title"],
+  });
+
+  function normalizeRepeatAnchor(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/[()（）[\]【】{}<>《》.,，。/\\\-_:：;+*"'`“”‘’]/g, "");
+  }
+
+  function getRuntimeComparableValue(runtime) {
+    if (!runtime) return "";
+    if (runtime.kind === "contenteditable") {
+      return normalizeRepeatAnchor(runtime.el?.textContent || "");
+    }
+    if (runtime.kind === "select") {
+      const optionText = runtime.el?.options?.[runtime.el.selectedIndex]?.textContent || "";
+      return normalizeRepeatAnchor(optionText || runtime.el?.value || "");
+    }
+    if (runtime.kind === "custom_picker") {
+      return normalizeRepeatAnchor(
+        runtime.el?.value ||
+          runtime.pickerRoot?.getAttribute?.("data-value") ||
+          runtime.pickerRoot?.getAttribute?.("aria-valuetext") ||
+          ""
+      );
+    }
+    if (["radio_group", "checkbox_group", "file"].includes(runtime.kind)) return "";
+    return normalizeRepeatAnchor(runtime.el?.value || "");
+  }
+
+  function getProfileRepeatEntries(profile, semanticSectionKey) {
+    const schemaSectionKey = fieldSemantics.getSchemaSectionKey?.(semanticSectionKey);
+    const anchorKeys = INCREMENTAL_REPEAT_ANCHOR_KEYS[semanticSectionKey] || [];
+    const items = Array.isArray(profile?.[schemaSectionKey])
+      ? profile[schemaSectionKey]
+      : [];
+    return items
+      .map((item, sourceIndex) => ({
+        sourceIndex,
+        anchors: anchorKeys
+          .map((key) => normalizeRepeatAnchor(item?.[key]))
+          .filter((value) => value.length >= 2),
+      }))
+      .filter((entry) => entry.anchors.length > 0);
+  }
+
+  function alignIncrementalRepeatSourceIndexes(scan, resumeProfile) {
+    const fields = Array.isArray(scan?.fields) ? scan.fields : [];
+    const runtimes = Array.isArray(scan?.runtime) ? scan.runtime : [];
+    if (fields.length === 0 || runtimes.length === 0) return 0;
+
+    const runtimeById = new Map(runtimes.map((runtime) => [runtime.fieldId, runtime]));
+    const sectionGroups = new Map();
+    fields.forEach((field, documentIndex) => {
+      const sectionKey = String(field?.sectionKey || "");
+      if (!INCREMENTAL_REPEAT_ANCHOR_KEYS[sectionKey]) return;
+      const pageIndex = Number.isInteger(field.sectionItemIndex)
+        ? field.sectionItemIndex
+        : -1;
+      const groupKey = `${sectionKey}:${pageIndex}`;
+      if (!sectionGroups.has(groupKey)) {
+        sectionGroups.set(groupKey, {
+          sectionKey,
+          pageIndex,
+          documentIndex,
+          fields: [],
+          values: [],
+        });
+      }
+      const group = sectionGroups.get(groupKey);
+      group.fields.push(field);
+      const value = getRuntimeComparableValue(runtimeById.get(field.fieldId));
+      if (value) group.values.push(value);
+    });
+
+    const visiblePageText = normalizeRepeatAnchor(
+      document.body?.innerText || document.documentElement?.innerText || ""
+    );
+    let changed = 0;
+
+    const groupsBySection = new Map();
+    for (const group of sectionGroups.values()) {
+      if (!groupsBySection.has(group.sectionKey)) groupsBySection.set(group.sectionKey, []);
+      groupsBySection.get(group.sectionKey).push(group);
+    }
+
+    for (const [sectionKey, groups] of groupsBySection.entries()) {
+      const entries = getProfileRepeatEntries(resumeProfile, sectionKey);
+      if (entries.length === 0) continue;
+      const usedIndexes = new Set();
+
+      for (const group of groups) {
+        if (group.values.length === 0) continue;
+        const matched = entries.find(
+          (entry) =>
+            !usedIndexes.has(entry.sourceIndex) &&
+            entry.anchors.some((anchor) =>
+              group.values.some(
+                (value) => value === anchor || value.includes(anchor) || anchor.includes(value)
+              )
+            )
+        );
+        if (!matched) continue;
+        usedIndexes.add(matched.sourceIndex);
+        for (const field of group.fields) {
+          if (field.sectionItemIndex !== matched.sourceIndex) changed += 1;
+          field.sectionItemIndex = matched.sourceIndex;
+        }
+      }
+
+      for (const entry of entries) {
+        if (usedIndexes.has(entry.sourceIndex)) continue;
+        if (
+          entry.anchors.some(
+            (anchor) => anchor.length >= 4 && visiblePageText.includes(anchor)
+          )
+        ) {
+          usedIndexes.add(entry.sourceIndex);
+        }
+      }
+
+      const remainingIndexes = entries
+        .map((entry) => entry.sourceIndex)
+        .filter((sourceIndex) => !usedIndexes.has(sourceIndex));
+      const blankGroups = groups
+        .filter((group) => group.values.length === 0)
+        .sort((left, right) => left.documentIndex - right.documentIndex);
+
+      blankGroups.forEach((group, blankIndex) => {
+        const sourceIndex = remainingIndexes[blankIndex];
+        if (!Number.isInteger(sourceIndex)) return;
+        for (const field of group.fields) {
+          if (field.sectionItemIndex !== sourceIndex) changed += 1;
+          field.sectionItemIndex = sourceIndex;
+        }
+      });
+    }
+
+    if (changed > 0) {
+      sendLog("info", `增量模式已根据页面现有经历重新对齐 ${changed} 个字段的来源条目`);
+    }
+    return changed;
   }
 
   function getRadioScopeId(element) {
@@ -1747,9 +2304,24 @@
   function collectControls(root) {
     const scope = root || document;
     const selectors =
-      'input, textarea, select, [contenteditable="true"], [contenteditable=""]';
+      `input, textarea, select, [contenteditable="true"], [contenteditable=""], ${COMPOSITE_PICKER_SELECTOR}`;
 
-    return Array.from(scope.querySelectorAll(selectors)).filter((el) => isVisible(el));
+    return Array.from(scope.querySelectorAll(selectors)).filter((el) => {
+      if (!isVisible(el)) return false;
+
+      const tag = String(el.tagName || "").toLowerCase();
+      if (tag !== "input" || isCompositePickerRoot(el)) return true;
+
+      const pickerRoot = el.closest?.(COMPOSITE_PICKER_SELECTOR);
+      return !pickerRoot || pickerRoot === el || !isVisible(pickerRoot);
+    });
+  }
+
+  function isCompositePickerRoot(el) {
+    if (!el || typeof el.matches !== "function") return false;
+    const tag = String(el.tagName || "").toLowerCase();
+    if (tag === "select") return false;
+    return el.matches(COMPOSITE_PICKER_SELECTOR);
   }
 
   function isFillableElement(el) {
@@ -1811,6 +2383,7 @@
   function buildTextLikeRuntime(fieldId, el, inputType, semanticMeta) {
     const composite = inferCompositeControlRole(el, inputType, semanticMeta);
     const customPicker = isCustomPickerInput(el);
+    const pickerRoot = customPicker ? getCustomPickerRoot(el) : null;
     return {
       fieldId,
       kind: customPicker ? "custom_picker" : "text",
@@ -1827,7 +2400,8 @@
       compositeIndex: composite.index,
       compositeCount: composite.count,
       displayLabel: decorateCompositeLabel(semanticMeta?.label || "", composite.role),
-      pickerRoot: customPicker ? getCustomPickerRoot(el) : null,
+      pickerRoot,
+      searchInput: customPicker ? el : null,
       pickerPrecision: inferDatePickerPrecision(el, inputType),
       hasCalendarIcon: Boolean(
         el.closest?.(
@@ -1837,20 +2411,67 @@
     };
   }
 
+  function getPickerSearchInput(root) {
+    if (!root) return null;
+    if (String(root.tagName || "").toLowerCase() === "input") return root;
+    return (
+      root.querySelector?.(
+        'input:not([type="hidden"]),textarea,[contenteditable="true"],[contenteditable=""]'
+      ) || null
+    );
+  }
+
+  function buildCompositePickerRuntime(fieldId, root, inputType, semanticMeta) {
+    const searchInput = getPickerSearchInput(root);
+    const valueElement = searchInput || root;
+    const composite = inferCompositeControlRole(root, inputType, semanticMeta);
+    const placeholder =
+      valueElement.getAttribute?.("placeholder") ||
+      root.getAttribute?.("aria-label") ||
+      "";
+    return {
+      fieldId,
+      kind: "custom_picker",
+      inputType: inputType || String(valueElement.getAttribute?.("type") || "text").toLowerCase(),
+      el: valueElement,
+      id: valueElement.id || root.id || "",
+      name: valueElement.getAttribute?.("name") || root.getAttribute?.("name") || "",
+      readOnly: Boolean(
+        valueElement.readOnly || valueElement.getAttribute?.("aria-readonly") === "true"
+      ),
+      label: semanticMeta?.label || "",
+      placeholder,
+      context: semanticMeta?.context || "",
+      nearbyLabels: semanticMeta?.nearbyLabels || [],
+      compositeRole: composite.role,
+      compositeIndex: composite.index,
+      compositeCount: composite.count,
+      displayLabel: decorateCompositeLabel(semanticMeta?.label || "", composite.role),
+      pickerRoot: root,
+      searchInput,
+      pickerPrecision: inferDatePickerPrecision(valueElement, inputType),
+      hasCalendarIcon: false,
+    };
+  }
+
   function inferDatePickerPrecision(el, inputType = "") {
     const normalizedType = String(inputType || "").toLowerCase();
     if (normalizedType === "month") return "month";
     if (["date", "datetime-local"].includes(normalizedType)) return "day";
 
-    const currentValue = String(el?.value || "").trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(currentValue)) return "day";
-    if (/^\d{4}-\d{2}$/.test(currentValue)) return "month";
-
     const evidence = [
       el?.getAttribute?.("data-picker"),
       el?.getAttribute?.("data-mode"),
       el?.getAttribute?.("data-type"),
+      el?.getAttribute?.("data-format"),
+      el?.getAttribute?.("value-format"),
+      el?.getAttribute?.("date-format"),
+      el?.getAttribute?.("format"),
       el?.getAttribute?.("placeholder"),
+      el?.getAttribute?.("aria-label"),
+      el?.getAttribute?.("title"),
+      el?.getAttribute?.("name"),
+      el?.id,
       el?.className,
       el?.closest?.("[class*='picker'],[class*='Picker']")?.className,
     ]
@@ -1858,12 +2479,29 @@
       .join(" ")
       .toLowerCase();
 
-    if (/(month[-_ ]?picker|picker[-_ ]?month|选择月份|选择年月|年月选择)/.test(evidence)) {
+    if (
+      /(year[-_ ]?picker|picker[-_ ]?year|选择年份|请选择年份|请输入年份|年份选择|毕业年份|入学年份|获奖年份|发表年份)/.test(evidence) ||
+      /(?:^|[\s'"=:])yyyy(?:$|[\s'";])/i.test(evidence)
+    ) {
+      return "year";
+    }
+    if (
+      /(month[-_ ]?picker|picker[-_ ]?month|选择月份|选择年月|年月选择|请选择月份|请选择年月)/.test(evidence) ||
+      /yyyy\s*[-/.年]\s*mm(?:\s*月)?/i.test(evidence)
+    ) {
       return "month";
     }
-    if (/(day[-_ ]?picker|picker[-_ ]?date|date[-_ ]?picker|选择日期)/.test(evidence)) {
+    if (
+      /(day[-_ ]?picker|picker[-_ ]?date|date[-_ ]?picker|选择日期|请选择日期)/.test(evidence) ||
+      /yyyy\s*[-/.年]\s*mm\s*[-/.月]\s*dd/i.test(evidence)
+    ) {
       return "day";
     }
+
+    const currentValue = String(el?.value || "").trim();
+    if (/^\d{4}$/.test(currentValue)) return "year";
+    if (/^\d{4}-\d{2}$/.test(currentValue)) return "month";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(currentValue)) return "day";
     return "";
   }
 
@@ -1878,9 +2516,16 @@
   function getCompositeControls(el) {
     const container = getCompositeControlContainer(el);
     if (!container) return [el];
-    return Array.from(container.querySelectorAll("input,textarea,select")).filter((control) => {
+    return Array.from(
+      container.querySelectorAll(`input,textarea,select,${COMPOSITE_PICKER_SELECTOR}`)
+    ).filter((control) => {
       const type = String(control.getAttribute?.("type") || "text").toLowerCase();
-      return !["hidden", "file", "submit", "button", "reset"].includes(type) && isVisible(control);
+      if (["hidden", "file", "submit", "button", "reset"].includes(type) || !isVisible(control)) {
+        return false;
+      }
+      if (String(control.tagName || "").toLowerCase() !== "input") return true;
+      const pickerRoot = control.closest?.(COMPOSITE_PICKER_SELECTOR);
+      return !pickerRoot || pickerRoot === control;
     });
   }
 
@@ -1928,6 +2573,14 @@
       };
     }
 
+    if (/(家庭所在地|籍贯|户口所在地|生源地|hometown|nativeplace|familylocation)/.test(evidence)) {
+      return {
+        role: index === 0 ? "regionProvince" : index === controls.length - 1 ? "regionCity" : `part${index + 1}`,
+        index,
+        count: controls.length,
+      };
+    }
+
     return { role: "", index, count: controls.length };
   }
 
@@ -1939,6 +2592,8 @@
       nationalNumber: "号码",
       type: "类型",
       value: "号码",
+      regionProvince: "省份",
+      regionCity: "城市",
     };
     const suffix = suffixes[role];
     return suffix ? `${label || "复合字段"}（${suffix}）` : label;
@@ -1957,6 +2612,7 @@
     if (/date|calendar|range/i.test(className)) return false;
     return Boolean(
       el.getAttribute?.("role") === "combobox" ||
+      el.closest?.(COMPOSITE_PICKER_SELECTOR) ||
       el.closest?.(
         "[class*='cascader'],[class*='Cascader'],[class*='picker-select'],[class*='PickerSelect']"
       )
@@ -1964,6 +2620,9 @@
   }
 
   function getCustomPickerRoot(el) {
+    if (isCompositePickerRoot(el)) return el;
+    const accessibleRoot = el.closest?.(COMPOSITE_PICKER_SELECTOR);
+    if (accessibleRoot) return accessibleRoot;
     const selector =
       activeSiteAdapter?.customPickerRootSelector ||
       "[class*='cascader']:not(input),[class*='Cascader']:not(input),[class*='picker']:not(input),[class*='Picker']:not(input),[class*='select']:not(input),[class*='Select']:not(input)";
@@ -2291,9 +2950,11 @@
       if (explicitValue) return true;
 
       const selectedNode = root.querySelector?.(
-        "[class*='single_selected'],[class*='single-selected'],[class*='selected_label'],[class*='selected-label'],[data-selected='true'],[aria-selected='true']"
+        "[class*='single_selected'],[class*='single-selected'],[class*='selected_label'],[class*='selected-label'],[class*='selected-value'],[class*='selectedValue'],[class*='selection-selected-value'],[class*='select-selection-item'],[data-selected='true'],[aria-selected='true']"
       );
-      const selectedText = normalizeText(selectedNode?.textContent || "");
+      const selectedText = normalizeText(
+        selectedNode?.textContent || getCustomPickerRootText(runtime)
+      );
       return Boolean(
         selectedText && !/^(请选择|请输入|select|choose)$/i.test(selectedText)
       );
@@ -2313,6 +2974,11 @@
   function refreshRuntimeElement(runtime) {
     if (!runtime?.el || typeof document === "undefined") return runtime;
 
+    const originalIsConnected =
+      runtime.el.isConnected === true ||
+      Boolean(document.documentElement?.contains?.(runtime.el));
+    if (originalIsConnected) return runtime;
+
     let current = null;
     if (runtime.id) {
       current = document.getElementById(runtime.id);
@@ -2329,6 +2995,7 @@
     runtime.pickerPrecision = inferDatePickerPrecision(current, runtime.inputType);
     if (runtime.kind === "custom_picker") {
       runtime.pickerRoot = getCustomPickerRoot(current);
+      runtime.searchInput = getPickerSearchInput(runtime.pickerRoot);
     }
     runtime.hasCalendarIcon = Boolean(
       current.closest?.(
@@ -2403,6 +3070,18 @@
     }
 
     if (runtime.kind === "checkbox_group") {
+      const booleanIntent = getBooleanCheckboxIntent(runtime, value);
+      if (booleanIntent !== null) {
+        let allMatched = true;
+        for (const option of runtime.options || []) {
+          const ok = await safeCheck(option.el, booleanIntent);
+          allMatched = allMatched && ok;
+        }
+        return allMatched
+          ? { filled: true }
+          : { filled: false, message: "无法切换复选框状态" };
+      }
+
       const desired = normalizeCheckboxCandidates(value);
       if (desired.length === 0) {
         return { filled: false, message: "没有可勾选项" };
@@ -2441,6 +3120,13 @@
     if (runtime.kind === "custom_picker") {
       const desired = prepareTextValueForRuntime(runtime, value);
       if (!desired) return { filled: false, message: "没有可选择内容" };
+      if (
+        fillRuntime.isDateLikeRuntime?.(runtime) ||
+        fillRuntime.isReadonlyDateLikeRuntime(runtime)
+      ) {
+        const ok = await fillReadonlyDateRuntime(runtime, desired);
+        return ok ? { filled: true } : { filled: false, message: "日期控件写入失败" };
+      }
       const ok = await fillCustomPicker(runtime, desired);
       return ok
         ? { filled: true }
@@ -2484,6 +3170,27 @@
     }
 
     return { filled: false, message: "写入失败" };
+  }
+
+  function getBooleanCheckboxIntent(runtime, value) {
+    const options = Array.isArray(runtime?.options) ? runtime.options : [];
+    if (options.length !== 1) return null;
+
+    const evidence = normalizeForMatch(
+      [runtime?.label, runtime?.context, options[0]?.label, options[0]?.value]
+        .filter(Boolean)
+        .join(" ")
+    );
+    if (!/(至今|当前|仍在|present|current|ongoing)/.test(evidence)) return null;
+
+    const normalized = normalizeForMatch(Array.isArray(value) ? value[0] : value);
+    if (/^(是|true|yes|y|1|至今|当前|仍在|present|current|ongoing)$/.test(normalized)) {
+      return true;
+    }
+    if (/^(否|false|no|n|0|不是|已结束|ended)$/.test(normalized)) {
+      return false;
+    }
+    return null;
   }
 
   function prepareTextValueForRuntime(runtime, value) {
@@ -2634,6 +3341,9 @@
     if (!el) return false;
 
     scrollIntoView(el);
+    const previousValue = String(el.value ?? "");
+    const hadValueAttribute = el.hasAttribute?.("value") || false;
+    const previousValueAttribute = el.getAttribute?.("value");
     const restoreReadonly =
       runtime?.readOnly || el.readOnly
         ? {
@@ -2654,9 +3364,24 @@
       el.dispatchEvent(new Event("change", { bubbles: true }));
       el.blur?.();
       await sleep(60);
-      return fillRuntime.matchesWrittenValue(runtime, el.value, value);
+      const matched = fillRuntime.matchesWrittenValue(runtime, el.value, value);
+      if (!matched) {
+        restoreTextControlValue(
+          el,
+          previousValue,
+          hadValueAttribute,
+          previousValueAttribute
+        );
+      }
+      return matched;
     } catch (error) {
       console.warn(EXT_TAG, "写入失败", error);
+      restoreTextControlValue(
+        el,
+        previousValue,
+        hadValueAttribute,
+        previousValueAttribute
+      );
       return false;
     } finally {
       if (restoreReadonly) {
@@ -2667,6 +3392,27 @@
           el.removeAttribute("readonly");
         }
       }
+    }
+  }
+
+  function restoreTextControlValue(
+    el,
+    previousValue,
+    hadValueAttribute = false,
+    previousValueAttribute = null
+  ) {
+    if (!el) return;
+    try {
+      setNativeValue(el, previousValue);
+      if (hadValueAttribute) {
+        el.setAttribute("value", previousValueAttribute ?? previousValue);
+      } else {
+        el.removeAttribute?.("value");
+      }
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    } catch (_) {
+      // A failed fill must not prevent the remaining fields from being processed.
     }
   }
 
@@ -2702,11 +3448,14 @@
     }
 
     const parsed = parseDateParts(desired);
-    if (!parsed.year || !parsed.month) {
+    const panelPrecision = inferVisibleDatePanelPrecision(panel);
+    const runtimePrecision = fillRuntime.inferRuntimeDatePrecision?.(runtime) || "";
+    const targetPrecision = runtimePrecision || panelPrecision || "day";
+    if (!parsed.year || (targetPrecision !== "year" && !parsed.month)) {
       logDateFillStep(
         runtime,
         "目标日期精度不足",
-        `${desired}；日期组件至少需要年份和月份`
+        `${desired}；该组件需要${targetPrecision === "year" ? "年份" : "年份和月份"}`
       );
       return false;
     }
@@ -2714,17 +3463,19 @@
     logDateFillStep(
       runtime,
       "面板已打开",
-      `year=${parsed.year} month=${parsed.month} day=${parsed.day || 0}`
+      `precision=${targetPrecision} year=${parsed.year} month=${parsed.month} day=${parsed.day || 0}`
     );
-    const panelPrecision = inferVisibleDatePanelPrecision(panel);
-    if (panelPrecision === "day" && !parsed.day) {
+    if (targetPrecision === "day" && !parsed.day) {
       logDateFillStep(runtime, "目标日期精度不足", `${desired}；该组件需要具体日期`);
       return false;
     }
-    const shouldPickDay = Boolean(parsed.day && panelPrecision !== "month");
-    const expectedDesired = panelPrecision === "month"
-      ? `${parsed.year}-${String(parsed.month).padStart(2, "0")}`
-      : desired;
+    const shouldPickDay = targetPrecision === "day";
+    const expectedDesired =
+      targetPrecision === "year"
+        ? String(parsed.year)
+        : targetPrecision === "month"
+        ? `${parsed.year}-${String(parsed.month).padStart(2, "0")}`
+        : desired;
 
     const yearReady = await movePickerToYear(panel, parsed.year, runtime.el);
     if (!yearReady) {
@@ -2733,7 +3484,17 @@
     }
 
     panel = findVisibleDatePanel(runtime.el) || panel;
-    if (shouldPickDay) {
+    if (targetPrecision === "year") {
+      const yearOk =
+        (await clickPanelCell(panel, String(parsed.year), { unit: "year" })) ||
+        (await clickPanelCell(panel, `${parsed.year}年`, { unit: "year" }));
+      if (!yearOk) {
+        logDateFillStep(runtime, "年份点击失败", String(parsed.year));
+        return false;
+      }
+      logDateFillStep(runtime, "年份点击成功", String(parsed.year));
+      await sleep(120);
+    } else if (shouldPickDay) {
       const monthReady = await movePickerToMonth(
         panel,
         parsed.month,
@@ -2806,6 +3567,9 @@
       .map((value) => (typeof value === "string" ? value : ""))
       .join(" ")
       .toLowerCase();
+    if (/(year[-_ ]?panel|year[-_ ]?picker|picker[-_ ]?year)/.test(classText)) {
+      return "year";
+    }
     if (/(month[-_ ]?panel|month[-_ ]?picker|picker[-_ ]?month)/.test(classText)) {
       return "month";
     }
@@ -2818,9 +3582,17 @@
         .map((node) => node.textContent || "")
         .join(" ")
     );
-    return /(一|二|三|四|五|六|日|mon|tue|wed|thu|fri|sat|sun)/i.test(weekdayText)
-      ? "day"
-      : "";
+    if (/(一|二|三|四|五|六|日|mon|tue|wed|thu|fri|sat|sun)/i.test(weekdayText)) {
+      return "day";
+    }
+
+    const yearCells = Array.from(panel.querySelectorAll?.("button,td,li,[role='button']") || [])
+      .filter((node) => /^\d{4}年?$/.test(normalizeDatePanelToken(node.textContent || "")));
+    const monthCells = Array.from(panel.querySelectorAll?.("button,td,li,[role='button']") || [])
+      .filter((node) => Boolean(parsePickerMonthToken(node.textContent || "")));
+    if (yearCells.length >= 3 && monthCells.length === 0) return "year";
+    if (monthCells.length >= 3) return "month";
+    return "";
   }
 
   function logDateFillStep(runtime, step, detail = "") {
@@ -3191,35 +3963,72 @@
   function customPickerValueMatches(runtime, desired, startValue = "") {
     const normalizePickerValue = (value) =>
       normalizeForMatch(value).replace(/特别行政区|自治区|自治州|省|市|区|县/g, "");
-    const target = normalizePickerValue(desired);
-    if (!target) return false;
+    const targets = (Array.isArray(desired) ? desired : [desired])
+      .map(normalizePickerValue)
+      .filter(Boolean);
+    if (targets.length === 0) return false;
 
+    const selectedValueSelector =
+      activeSiteAdapter?.selectedValueSelector ||
+      "[class*='single_selected'],[class*='single-selected'],[class*='selected_label'],[class*='selected-label']";
     const selectedText = String(
-      runtime?.pickerRoot?.querySelector?.(
-        "[class*='single_selected'],[class*='single-selected'],[class*='selected_label'],[class*='selected-label']"
-      )?.textContent || ""
+      runtime?.pickerRoot?.querySelector?.(selectedValueSelector)?.textContent || ""
     ).trim();
-    const selected = normalizePickerValue(selectedText);
-    if (selected && (selected === target || selected.includes(target))) return true;
+    const selected = normalizePickerValue(
+      selectedText || getCustomPickerRootText(runtime)
+    );
+    if (
+      selected &&
+      targets.some((target) => selected === target || selected.includes(target))
+    ) return true;
 
     if (getVisibleCustomPickerOptions().length > 0) return false;
-    const currentValue = String(runtime?.el?.value || "").trim();
+    const currentValue = String(
+      runtime?.searchInput?.value || runtime?.el?.value || ""
+    ).trim();
     if (!currentValue || currentValue === startValue) return false;
     const current = normalizePickerValue(currentValue);
-    return current === target || current.includes(target);
+    return targets.some((target) => current === target || current.includes(target));
+  }
+
+  function getCustomPickerRootText(runtime) {
+    const root = runtime?.pickerRoot;
+    if (!root) return "";
+    const text = normalizeText(
+      root.getAttribute?.("aria-valuetext") || root.textContent || ""
+    );
+    if (!text || /^(请选择|请输入|select|choose)/i.test(text)) return "";
+    return text;
+  }
+
+  function getCustomPickerDesiredCandidates(runtime, desired) {
+    const evidence = normalizeForMatch(
+      [runtime?.label, runtime?.baseLabel, runtime?.context].filter(Boolean).join(" ")
+    );
+    const normalizedDesired = normalizeForMatch(desired);
+    if (
+      /(工作年限|工作经验年限|yearsofexperience|workyears)/.test(evidence) &&
+      /^(0|0年|无|无工作经验)$/.test(normalizedDesired)
+    ) {
+      return ["应届毕业生"];
+    }
+    return [desired];
   }
 
   async function fillCustomPicker(runtime, desired) {
-    const input = runtime?.el;
-    if (!input) return false;
+    const pickerRoot = runtime?.pickerRoot || runtime?.el;
+    const input = runtime?.searchInput || getPickerSearchInput(pickerRoot) || runtime?.el;
+    if (!pickerRoot || !input) return false;
 
-    const startValue = String(input.value || "").trim();
-    scrollIntoView(input);
-    clickLikeUser(runtime.pickerRoot || input);
+    const inputStartValue = String(input.value || "");
+    const startValue = String(inputStartValue || getCustomPickerRootText(runtime) || "").trim();
+    const desiredCandidates = getCustomPickerDesiredCandidates(runtime, desired);
+    scrollIntoView(pickerRoot);
+    clickLikeUser(pickerRoot);
     input.focus?.();
 
-    if (!runtime.readOnly) {
-      setNativeValue(input, desired);
+    if (!runtime.readOnly && "value" in input) {
+      setNativeValue(input, desiredCandidates[0] || desired);
       input.dispatchEvent(new Event("input", { bubbles: true }));
       await sleep(120);
     } else {
@@ -3232,7 +4041,7 @@
       const options = getVisibleCustomPickerOptions().filter(
         (option) => !clickedOptions.has(option.el)
       );
-      const best = pickBestOption(options, desired);
+      const best = pickBestOption(options, desiredCandidates);
       if (!best) break;
 
       clickedOptions.add(best.el);
@@ -3240,11 +4049,43 @@
       selectedAny = true;
       await sleep(120);
 
-      if (customPickerValueMatches(runtime, desired, startValue)) return true;
+      if (
+        customPickerValueMatches(
+          runtime,
+          best.label || best.value || desiredCandidates,
+          startValue
+        )
+      ) return true;
     }
 
-    if (!selectedAny) return false;
-    return customPickerValueMatches(runtime, desired, startValue);
+    if (selectedAny && customPickerValueMatches(runtime, desiredCandidates, startValue)) {
+      return true;
+    }
+
+    // Searchable selects often share an <input> with the visible selected value.
+    // If no option matched, leaving the search query behind makes a failed attempt
+    // look like a successful (and potentially dangerous) fill, e.g. a name in gender.
+    restoreFailedCustomPickerInput(input, inputStartValue);
+    return false;
+  }
+
+  function restoreFailedCustomPickerInput(input, previousValue) {
+    if (!input || !("value" in input)) return;
+    try {
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true })
+      );
+    } catch (_) {
+      // KeyboardEvent may be unavailable in lightweight test environments.
+    }
+    try {
+      setNativeValue(input, previousValue);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      input.blur?.();
+    } catch (_) {
+      // Best-effort rollback only.
+    }
   }
 
   async function safeCheck(inputEl, checked) {
@@ -3330,6 +4171,11 @@
 
     const normalized = normalizeForMatch(text);
     const variants = new Set([normalized]);
+
+    const numericUnitMatch = normalized.match(/^0*(\d+)(年|月|日|号)?$/);
+    if (numericUnitMatch) {
+      variants.add(String(Number(numericUnitMatch[1])));
+    }
 
     for (const group of MATCH_ALIAS_GROUPS) {
       if (group.values.includes(normalized)) {

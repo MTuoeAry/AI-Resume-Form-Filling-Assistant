@@ -35,16 +35,53 @@ function loadHelpers() {
       "  function getMatchScore(optionText, candidateText) {",
       "  function sleep(ms) {"
     )}
+    ${extractBetween(
+      source,
+      "  function getCustomPickerDesiredCandidates(runtime, desired) {",
+      "  async function fillCustomPicker(runtime, desired) {"
+    )}
+    ${extractBetween(
+      source,
+      "  function setNativeValue(element, value) {",
+      "  function selectByText(selectEl, desired) {"
+    )}
+    ${extractBetween(
+      source,
+      "  function restoreFailedCustomPickerInput(input, previousValue) {",
+      "  async function safeCheck(inputEl, checked) {"
+    )}
     ${extractBetween(source, "  const MATCH_ALIAS_GROUPS = [", "  console.log(EXT_TAG,")}
     module.exports = {
       buildTextFallbackValues,
       pickBestOption,
+      getCustomPickerDesiredCandidates,
+      restoreFailedCustomPickerInput,
     };
   `;
 
+  class MockInputElement {}
+  Object.defineProperty(MockInputElement.prototype, "value", {
+    configurable: true,
+    get() {
+      return this._value || "";
+    },
+    set(value) {
+      this._value = String(value);
+    },
+  });
+  class MockTextAreaElement extends MockInputElement {}
+  class MockEvent {
+    constructor(type) {
+      this.type = type;
+    }
+  }
   const context = {
     module: { exports: {} },
     exports: {},
+    HTMLInputElement: MockInputElement,
+    HTMLTextAreaElement: MockTextAreaElement,
+    Event: MockEvent,
+    KeyboardEvent: MockEvent,
   };
   context.globalThis = context;
 
@@ -67,6 +104,17 @@ test("pickBestOption prefers full-time study mode over fuzzy sibling options", (
   assert.equal(option?.value, "fulltime");
 });
 
+test("zero work experience selects the graduate option in recruiting pickers", () => {
+  const helpers = loadHelpers();
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.getCustomPickerDesiredCandidates(
+      { label: "工作年限" },
+      "0"
+    ))),
+    ["应届毕业生"]
+  );
+});
+
 test("buildTextFallbackValues converts month salary ranges to numeric fallback", () => {
   const helpers = loadHelpers();
   const fallbacks = helpers.buildTextFallbackValues(
@@ -78,4 +126,47 @@ test("buildTextFallbackValues converts month salary ranges to numeric fallback",
   );
 
   assert.deepEqual(JSON.parse(JSON.stringify(fallbacks)), ["10000"]);
+});
+
+test("numeric date parts match select options with localized units", () => {
+  const helpers = loadHelpers();
+  assert.equal(
+    helpers.pickBestOption(
+      [
+        { label: "8月", value: "8" },
+        { label: "9月", value: "9" },
+        { label: "10月", value: "10" },
+      ],
+      "09"
+    )?.value,
+    "9"
+  );
+});
+
+test("failed searchable-picker input is rolled back instead of leaving a stray value", () => {
+  const helpers = loadHelpers();
+  const events = [];
+  const input = {
+    tagName: "input",
+    _value: "罗敬",
+    dispatchEvent(event) {
+      events.push(event.type);
+    },
+    blur() {
+      events.push("blur");
+    },
+  };
+  Object.defineProperty(input, "value", {
+    get() {
+      return this._value;
+    },
+    set(value) {
+      this._value = String(value);
+    },
+  });
+
+  helpers.restoreFailedCustomPickerInput(input, "");
+
+  assert.equal(input.value, "");
+  assert.deepEqual(events, ["keydown", "input", "change", "blur"]);
 });

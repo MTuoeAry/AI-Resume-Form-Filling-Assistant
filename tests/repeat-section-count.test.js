@@ -28,6 +28,9 @@ function loadRepeatCounter() {
     getRepeatSectionRoot: (trigger) => trigger.root,
     normalizeDeepScanText: (value) => String(value || "").replace(/^\*|\*$/g, "").trim(),
     isVisible: () => true,
+    isDormantEditorAction: () => false,
+    countControls: () => 0,
+    pendingRepeatItemIndexes: new WeakMap(),
   };
   vm.createContext(context);
   vm.runInContext(

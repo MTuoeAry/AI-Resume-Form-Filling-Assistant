@@ -104,6 +104,17 @@
           url: sanitizeUrlForExport(session?.tab?.url),
           title: session?.tab?.title || "",
         },
+        operation: {
+          actionKey: compactText(session?.operation?.actionKey),
+          fillMode: compactText(session?.operation?.fillMode),
+          scope: compactText(session?.operation?.scope),
+        },
+        runtime: {
+          extensionVersion: compactText(session?.runtime?.extensionVersion),
+          expectedContentScriptVersion: compactText(
+            session?.runtime?.expectedContentScriptVersion
+          ),
+        },
         stats: {
           fieldCount: Number(session?.stats?.fieldCount || 0),
           mappedCount: Number(session?.stats?.mappedCount || 0),
@@ -206,6 +217,10 @@
     async function ensureLogsDirectoryHandle(rootHandle) {
       if (!rootHandle || typeof rootHandle.getDirectoryHandle !== "function") {
         throw new Error("未配置项目目录");
+      }
+
+      if (String(rootHandle.name || "").toLowerCase() === LOGS_DIR_NAME) {
+        return rootHandle;
       }
 
       return rootHandle.getDirectoryHandle(LOGS_DIR_NAME, { create: true });

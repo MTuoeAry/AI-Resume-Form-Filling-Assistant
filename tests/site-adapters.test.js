@@ -33,4 +33,36 @@ test("unknown sites receive only conservative common repeat rules", () => {
   );
   assert.ok(adapters.COMMON_REPEAT_ITEM_SELECTORS.includes("[data-item-index]"));
   assert.ok(adapters.COMMON_REPEAT_ITEM_SELECTORS.includes("fieldset"));
+  assert.ok(
+    rules.find((rule) => rule.sectionKey === "internships").sectionTexts.includes("实践活动")
+  );
+  assert.ok(
+    rules.find((rule) => rule.sectionKey === "awards").sectionTexts.includes("奖励荣誉")
+  );
+  assert.ok(
+    rules.find((rule) => rule.sectionKey === "campusExperiences").sectionTexts.includes("在校职务")
+  );
+});
+
+test("Beisen Zhiye forms activate the platform adapter", () => {
+  const adapter = adapters.getActiveAdapter({
+    hostname: "huawutang1.zhiye.com",
+    pathname: "/form",
+  });
+
+  assert.equal(adapter.id, "beisen-zhiye-form");
+  assert.match(adapter.repeatTriggerSelector, /span\[class\]/);
+  assert.equal(adapter.customPickerInputSelector, ".phoenix-select__input");
+  assert.ok(adapter.optionSelectors.includes(".phoenix-selectList__listItem"));
+  assert.ok(adapter.repeatRules.some((rule) => rule.sectionKey === "workExperiences"));
+});
+
+test("Beisen iTalent white-label domains activate the same Phoenix adapter", () => {
+  const adapter = adapters.getActiveAdapter({
+    hostname: "cloud.italent.cn",
+    pathname: "/PageHome/Index",
+  });
+
+  assert.equal(adapter.id, "beisen-zhiye-form");
+  assert.equal(adapter.customPickerInputSelector, ".phoenix-select__input");
 });

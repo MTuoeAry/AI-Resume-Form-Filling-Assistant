@@ -28,7 +28,7 @@ function loadContentSecurityHelpers() {
     const schema = window.ResumeSchema;
     const fieldSemantics = fieldSemanticsApi;
     ${extract(contentSource, "function sanitizePageUrl(value) {", "function cssEscape(value) {")}
-    ${extract(contentSource, "function normalizeMappings(rawMappings, fields) {", "function normalizeTransform(transform) {")}
+    ${extract(contentSource, "function normalizeMappings(rawMappings, fields, resumeProfile = null) {", "function normalizeTransform(transform) {")}
     ${extract(contentSource, "function normalizeTransform(transform) {", "function deriveFillValue(rawValue, transform, runtime) {")}
     module.exports = { normalizeMappings, sanitizePageUrl };
   `;
@@ -108,4 +108,102 @@ test("Midea structured repeat fields use deterministic section indexes", () => {
   assert.equal(mappings[1].resumePath, "awards.1.name");
   assert.equal(mappings[2].resumePath, "publications.2.details");
   assert.match(mappings[2].reason, /确定映射/);
+});
+
+test("work-only forms map each row to the corresponding internship source", () => {
+  const helpers = loadContentSecurityHelpers();
+  const profile = {
+    workExperiences: [],
+    internships: [
+      { company: "甲公司", description: "第一段实习" },
+      { company: "乙公司", description: "第二段实习" },
+    ],
+  };
+  const mappings = helpers.normalizeMappings(
+    [],
+    [
+      { fieldId: "w_1", sectionKey: "work", sectionItemIndex: 0, label: "单位名称" },
+      { fieldId: "w_2", sectionKey: "work", sectionItemIndex: 1, label: "单位名称" },
+      { fieldId: "w_3", sectionKey: "work", sectionItemIndex: 1, label: "工作职责" },
+    ],
+    profile
+  );
+
+  assert.equal(mappings[0].resumePath, "internships.0.company");
+  assert.equal(mappings[1].resumePath, "internships.1.company");
+  assert.equal(mappings[2].resumePath, "internships.1.description");
+});
+
+test("work-only generic placeholders keep company, title, and description on each row", () => {
+  const helpers = loadContentSecurityHelpers();
+  const profile = {
+    workExperiences: [],
+    internships: [
+      { company: "甲公司", title: "算法实习生", description: "第一段实习" },
+      { company: "乙公司", title: "后端实习生", description: "第二段实习" },
+    ],
+  };
+  const mappings = helpers.normalizeMappings(
+    [],
+    [
+      { fieldId: "w_1", sectionKey: "work", sectionItemIndex: 0, label: "请输入", nearbyLabels: ["公司名称", "职位名称"] },
+      { fieldId: "w_2", sectionKey: "work", sectionItemIndex: 0, label: "请输入", nearbyLabels: ["职位名称", "公司名称"] },
+      { fieldId: "w_3", sectionKey: "work", sectionItemIndex: 0, label: "请输入", nearbyLabels: ["工作职责"] },
+      { fieldId: "w_4", sectionKey: "work", sectionItemIndex: 1, label: "请输入", nearbyLabels: ["公司名称", "职位名称"] },
+      { fieldId: "w_5", sectionKey: "work", sectionItemIndex: 1, label: "请输入", nearbyLabels: ["职位名称", "公司名称"] },
+      { fieldId: "w_6", sectionKey: "work", sectionItemIndex: 1, label: "请输入", nearbyLabels: ["工作职责"] },
+    ],
+    profile
+  );
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(mappings.map((mapping) => mapping.resumePath))),
+    [
+      "internships.0.company",
+      "internships.0.title",
+      "internships.0.description",
+      "internships.1.company",
+      "internships.1.title",
+      "internships.1.description",
+    ]
+  );
+});
+
+test("normalization blocks incompatible and unsupported AI mappings", () => {
+  const helpers = loadContentSecurityHelpers();
+  const mappings = helpers.normalizeMappings(
+    [
+      { fieldId: "gender", resumePath: "personal.fullName", reason: "AI guessed" },
+      { fieldId: "email", resumePath: "personal.fullName", reason: "AI guessed" },
+      { fieldId: "paper", resumePath: "educations.0.degree", reason: "AI guessed" },
+    ],
+    [
+      { fieldId: "gender", kind: "radio_group", label: "性别", options: ["男", "女"] },
+      { fieldId: "email", kind: "text", inputType: "email", label: "邮箱" },
+      { fieldId: "paper", kind: "select", sectionKey: "education", sectionItemIndex: 0, label: "paperGrad" },
+    ],
+    { educations: [{ degree: "硕士" }] }
+  );
+
+  assert.equal(mappings.find((item) => item.fieldId === "gender").resumePath, "personal.gender");
+  assert.equal(mappings.find((item) => item.fieldId === "email").resumePath, "");
+  assert.equal(mappings.find((item) => item.fieldId === "paper").resumePath, "");
+});
+
+test("single present checkboxes map to current-status fields even when their label is noisy", () => {
+  const helpers = loadContentSecurityHelpers();
+  const mappings = helpers.normalizeMappings(
+    [{ fieldId: "current", resumePath: "internships.0.title", reason: "AI guessed" }],
+    [{
+      fieldId: "current",
+      kind: "checkbox_group",
+      sectionKey: "internship",
+      sectionItemIndex: 0,
+      label: "职位名称",
+      options: ["至今"],
+    }],
+    { internships: [{ isCurrent: "否" }] }
+  );
+
+  assert.equal(mappings[0].resumePath, "internships.0.isCurrent");
 });

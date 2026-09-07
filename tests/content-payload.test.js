@@ -31,7 +31,7 @@ function loadPayloadHelpers() {
     ${extractFunction(
       contentSource,
       "function buildFieldMappingPayload(fields, resumeProfile) {",
-      "function normalizeMappings(rawMappings, fields) {"
+      "function normalizeMappings(rawMappings, fields, resumeProfile = null) {"
     )}
     module.exports = {
       schema,

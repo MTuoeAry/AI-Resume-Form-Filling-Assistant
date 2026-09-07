@@ -107,7 +107,7 @@ if (!contentBridge) {
 const RESUME_PROFILE_KEY = resumeStorage.keys.profile;
 const RESUME_SCHEMA_VERSION_KEY = resumeStorage.keys.schemaVersion;
 const RESUME_IMPORT_RAW_TEXT_KEY = resumeStorage.keys.rawText;
-const MAPPING_CACHE_KEY = "fieldMappingCacheV8";
+const MAPPING_CACHE_KEY = "fieldMappingCacheV13";
 
 const BUILTIN_MODEL = modelStorage.DEFAULT_MODEL;
 
@@ -304,7 +304,8 @@ async function refreshLogExportStatus() {
   logExportStatusEl.textContent = `已配置自动导出：${handle.name}/${logExport.LOGS_DIR_NAME}/`;
 }
 
-function createFillSession(tab) {
+function createFillSession(tab, actionKey = "", actionConfig = {}) {
+  const extensionVersion = chrome.runtime.getManifest?.().version || "";
   return {
     id: `fill-${Date.now()}`,
     startedAt: new Date().toISOString(),
@@ -316,6 +317,15 @@ function createFillSession(tab) {
       url: tab?.url || "",
       title: tab?.title || "",
     },
+    operation: {
+      actionKey,
+      fillMode: actionConfig.fillMode || "",
+      scope: actionConfig.scope || "",
+    },
+    runtime: {
+      extensionVersion,
+      expectedContentScriptVersion: contentBridge.CONTENT_SCRIPT_VERSION,
+    },
     stats: {
       fieldCount: 0,
       mappedCount: 0,
@@ -325,8 +335,8 @@ function createFillSession(tab) {
   };
 }
 
-function beginFillSession(tab) {
-  activeFillSession = createFillSession(tab);
+function beginFillSession(tab, actionKey, actionConfig) {
+  activeFillSession = createFillSession(tab, actionKey, actionConfig);
 }
 
 function recordSessionLog(level, message, timestamp) {
@@ -1316,7 +1326,11 @@ async function runFill(actionKey) {
   updateFillActionButtons({ isRunning: true, runningActionKey: actionKey });
   fillTipEl.hidden = true;
   updateStatus("running", actionConfig.statusText);
-  beginFillSession(tab);
+  beginFillSession(tab, actionKey, actionConfig);
+  addLog(
+    "info",
+    `[运行参数] action=${actionKey} mode=${actionConfig.fillMode} scope=${actionConfig.scope} extension=${activeFillSession?.runtime?.extensionVersion || "unknown"} expectedContent=${contentBridge.CONTENT_SCRIPT_VERSION}`
+  );
   addLog("info", actionConfig.startLog);
 
   try {
@@ -1334,7 +1348,15 @@ async function runFill(actionKey) {
       resumeAssets,
       fillMode: actionConfig.fillMode,
       scope: actionConfig.scope,
+      actionKey,
+      requestId: activeFillSession?.id || "",
     });
+
+    if (response?.success && !fillResponseMatchesRequest(response, actionKey, actionConfig)) {
+      throw new Error(
+        "网页执行的填充模式与所点击按钮不一致。请在扩展管理页重新加载插件，并刷新招聘网页后重试"
+      );
+    }
 
     if (response && Number.isFinite(Number(response.fieldCount))) {
       updateFillStats(
@@ -1389,6 +1411,17 @@ async function runFill(actionKey) {
     isFilling = false;
     updateStartFillAvailability();
   }
+}
+
+function fillResponseMatchesRequest(response, actionKey, actionConfig) {
+  const execution = response?.execution;
+  return Boolean(
+    execution &&
+      execution.actionKey === actionKey &&
+      execution.fillMode === actionConfig.fillMode &&
+      execution.scope === actionConfig.scope &&
+      execution.contentScriptVersion === contentBridge.CONTENT_SCRIPT_VERSION
+  );
 }
 
 clearMappingCacheBtn.addEventListener("click", async () => {

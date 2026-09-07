@@ -60,6 +60,7 @@ function loadContentHelpers() {
     },
     cssEscape: (value) => String(value || ""),
     getCustomPickerRoot: () => null,
+    getCustomPickerRootText: (runtime) => String(runtime?.pickerRoot?.textContent || "").trim(),
     inferDatePickerPrecision: () => "",
   };
 
@@ -77,6 +78,7 @@ function loadCheckboxFillHelper() {
   const end = source.indexOf("  function prepareTextValueForRuntime", start);
   const snippet = `
     function normalizeCheckboxCandidates(value) { return Array.isArray(value) ? value : String(value).split(","); }
+    function normalizeForMatch(value) { return String(value || "").toLowerCase().replace(/\\s+/g, ""); }
     function matchesAnyCandidate(label, candidates) { return candidates.includes(label); }
     function hasExistingFieldValue(runtime) { return Boolean(String(runtime?.el?.value || "").trim()); }
     const checks = [];
@@ -185,6 +187,22 @@ test("hasExistingFieldValue detects filled controls for incremental mode", () =>
     }),
     false
   );
+  assert.equal(
+    helpers.hasExistingFieldValue({
+      kind: "custom_picker",
+      el: { value: "" },
+      pickerRoot: {
+        className: "ant-select ant-select-enabled",
+        getAttribute: () => "",
+        textContent: "硕士研究生",
+        querySelector: (selector) =>
+          selector.includes("selection-selected-value")
+            ? { textContent: "硕士研究生" }
+            : null,
+      },
+    }),
+    true
+  );
 });
 
 test("refreshRuntimeElement follows framework rerenders before incremental checks", () => {
@@ -194,6 +212,22 @@ test("refreshRuntimeElement follows framework rerenders before incremental check
   helpers.refreshRuntimeElement(runtime);
   assert.equal(runtime.el, helpers.currentElement);
   assert.equal(helpers.hasExistingFieldValue(runtime), true);
+});
+
+test("refreshRuntimeElement keeps a connected repeated control with a shared name", () => {
+  const helpers = loadContentHelpers();
+  const secondRowControl = {
+    value: "第二条经历",
+    isConnected: true,
+  };
+  const runtime = {
+    kind: "text",
+    name: "companyName",
+    el: secondRowControl,
+  };
+
+  helpers.refreshRuntimeElement(runtime);
+  assert.equal(runtime.el, secondRowControl);
 });
 
 test("overwrite checkbox filling clears options outside the desired set", async () => {
@@ -215,6 +249,23 @@ test("overwrite checkbox filling clears options outside the desired set", async 
   assert.equal(result.filled, true);
   assert.equal(first.checked, true);
   assert.equal(second.checked, false);
+});
+
+test("a false current-position value unchecks the single present checkbox", async () => {
+  const helpers = loadCheckboxFillHelper();
+  const present = { checked: true };
+
+  const result = await helpers.fillOne(
+    {
+      kind: "checkbox_group",
+      label: "至今",
+      options: [{ el: present, label: "至今" }],
+    },
+    "否"
+  );
+
+  assert.equal(result.filled, true);
+  assert.equal(present.checked, false);
 });
 
 test("fillOne has a defensive no-overwrite guard in incremental mode", async () => {

@@ -83,6 +83,8 @@
         },
         { key: "birthDate", label: "出生日期", input: "date" },
         { key: "age", label: "年龄", input: "text", placeholder: "28" },
+        { key: "heightCm", label: "身高（cm）", input: "text", placeholder: "175" },
+        { key: "weightKg", label: "体重（kg）", input: "text", placeholder: "65" },
         { key: "email", label: "邮箱", input: "email", placeholder: "name@example.com" },
         { key: "alternateEmail", label: "备用邮箱", input: "email", placeholder: "name@outlook.com" },
         { key: "phoneCountryCode", label: "手机区号", input: "text", placeholder: "+86" },
@@ -126,6 +128,7 @@
         { key: "hometownCity", label: "籍贯城市", input: "text", placeholder: "南京" },
         { key: "hometownProvince", label: "籍贯省份/州", input: "text", placeholder: "江苏" },
         { key: "hukouLocation", label: "户口所在地", input: "text", placeholder: "江苏南京" },
+        { key: "familyLocation", label: "家庭所在地", input: "text", placeholder: "广西桂林" },
         { key: "emergencyContactName", label: "紧急联系人姓名", input: "text", placeholder: "李四" },
         { key: "emergencyContactRelationship", label: "紧急联系人关系", input: "text", placeholder: "父亲 / 母亲 / 配偶" },
         { key: "emergencyContactPhone", label: "紧急联系人电话", input: "tel", placeholder: "13700137000" },
@@ -148,6 +151,16 @@
         { key: "sponsorshipNeeded", label: "是否需要签证担保", input: "select", options: ["", "是", "否"] },
         { key: "driversLicense", label: "是否持有驾照", input: "select", options: ["", "是", "否"] },
         { key: "securityClearance", label: "安全许可", input: "text", placeholder: "无 / 选填" },
+      ],
+    },
+    {
+      key: "applicationDeclarations",
+      label: "申请声明与合规",
+      type: "group",
+      fields: [
+        { key: "relativesAtEmployer", label: "是否有亲属在应聘单位工作", input: "select", options: ["", "是", "否"] },
+        { key: "relativesDetails", label: "应聘单位亲属情况", input: "textarea", placeholder: "如有，请填写姓名、关系和部门；没有可留空" },
+        { key: "healthRestrictionHistory", label: "健康或职业禁忌情况", input: "textarea", placeholder: "如实填写；没有可填写“无”" },
       ],
     },
     {
@@ -245,7 +258,7 @@
       minItems: 0,
       slots: 4,
       itemLabel: "教育经历",
-      note: "按照时间从近到远填写；没有时可保持 0 条。",
+      note: "成绩、排名、补考重修等均属于对应的这一条教育经历；插件会根据学历层次、在读状态和时间自动判断最高学历，不依赖排列顺序。没有时可保持 0 条。",
       fields: [
         { key: "school", label: "学校名称", input: "text", placeholder: "清华大学" },
         {
@@ -277,8 +290,12 @@
         { key: "startDate", label: "开始时间", input: "date" },
         { key: "endDate", label: "结束时间", input: "date" },
         { key: "graduationStatus", label: "毕业状态", input: "select", options: ["", "已毕业", "预计毕业", "在读", "肄业"] },
-        { key: "gpa", label: "GPA", input: "text", placeholder: "3.8/4.0" },
-        { key: "ranking", label: "排名 / 荣誉", input: "text", placeholder: "前 10%" },
+        { key: "weightedAverageScore", label: "加权平均分（百分制）", input: "text", placeholder: "例如 88.5" },
+        { key: "gpa", label: "绩点（GPA）", input: "text", placeholder: "例如 3.8/4.0" },
+        { key: "ranking", label: "专业排名", input: "text", placeholder: "例如前 10% 或 5/120" },
+        { key: "makeupRetakeCourseCount", label: "补考及重修科目总门数", input: "text", placeholder: "例如 0" },
+        { key: "hasDualDegree", label: "该学历是否为双学位", input: "select", options: ["", "是", "否"] },
+        { key: "isUpgradedFromJuniorCollege", label: "该学历是否为专升本", input: "select", options: ["", "是", "否"] },
         { key: "laboratory", label: "实验室", input: "text", placeholder: "CAD&CG 国家重点实验室" },
         { key: "researchDirection", label: "领域方向", input: "text", placeholder: "AIGC / 多模态 / 推荐系统" },
         { key: "advisor", label: "导师", input: "text", placeholder: "王老师" },
@@ -536,6 +553,61 @@
     },
   ];
 
+  const DERIVED_FIELD_DEFINITIONS = Object.freeze([
+    ...[
+      ["school", "最高学历院校", "text"],
+      ["faculty", "最高学历学院/院系", "text"],
+      ["major", "最高学历专业", "text"],
+      ["degree", "最高学历层次", "text"],
+      ["endDate", "最高学历毕业时间", "date"],
+      ["weightedAverageScore", "最高学历加权平均分", "text"],
+      ["gpa", "最高学历绩点", "text"],
+      ["ranking", "最高学历专业排名", "text"],
+      ["makeupRetakeCourseCount", "最高学历补考及重修科目总门数", "text"],
+      ["hasDualDegree", "最高学历是否为双学位", "select"],
+      ["isUpgradedFromJuniorCollege", "最高学历是否为专升本", "select"],
+    ].map(([key, label, input]) => ({
+      path: `derived.highestEducation.${key}`,
+      sectionKey: "derived",
+      sectionLabel: "自动推导",
+      label,
+      input,
+      placeholder: "",
+      options: [],
+      derived: true,
+    })),
+    {
+      path: "derived.englishCertificate.name",
+      sectionKey: "derived",
+      sectionLabel: "自动推导",
+      label: "英语证书名称",
+      input: "text",
+      placeholder: "",
+      options: [],
+      derived: true,
+    },
+    {
+      path: "derived.englishCertificate.score",
+      sectionKey: "derived",
+      sectionLabel: "自动推导",
+      label: "英语证书成绩",
+      input: "text",
+      placeholder: "",
+      options: [],
+      derived: true,
+    },
+    {
+      path: "derived.achievementCategories",
+      sectionKey: "derived",
+      sectionLabel: "自动推导",
+      label: "荣誉、竞赛及学术成果类别",
+      input: "derived_multi",
+      placeholder: "",
+      options: [],
+      derived: true,
+    },
+  ]);
+
   const FIELD_VALUE_ALIASES = {
     personal: {
       birthDate: ["birthday", "birth", "dob", "birthMonth", "birthYearMonth", "出生年月"],
@@ -543,11 +615,19 @@
       lastNamePinyin: ["familyNamePinyin", "surnamePinyin", "lastNameSpell", "姓拼音"],
       ethnicity: ["ethnicGroup", "nation", "民族"],
       nationality: ["countryOrRegion", "nationalityOrRegion", "国籍", "国籍/地区"],
+      heightCm: ["height", "heightInCm", "身高"],
+      weightKg: ["weight", "weightInKg", "体重"],
     },
     contactAndLocation: {
       hometownCity: ["hometown", "nativePlace", "birthPlace", "籍贯"],
       hometownProvince: ["hometown", "nativePlace", "birthPlace", "籍贯"],
       emergencyContactRelationship: ["emergencyContactRelation", "emergencyRelationship", "与本人关系"],
+      familyLocation: ["familyAddress", "familyResidence", "家庭所在地"],
+    },
+    applicationDeclarations: {
+      relativesAtEmployer: ["hasRelativesAtCompany", "companyRelatives", "亲属在公司工作"],
+      relativesDetails: ["companyRelativeDetails", "relativeDetails", "亲属情况"],
+      healthRestrictionHistory: ["medicalHistory", "occupationalContraindication", "重大疾病史", "职业禁忌症"],
     },
     identityAndAuthorization: {
       personalIdNumber: ["idNumber", "idCardNumber", "identityCardNumber", "certificateNum", "身份证号"],
@@ -567,6 +647,11 @@
       laboratory: ["lab", "laboratoryName", "library", "所在实验室"],
       studentId: ["stuNo", "studentNo", "schoolNumber", "学号"],
       degree: ["educationCode", "educationLevel", "学历"],
+      weightedAverageScore: ["averageScore", "weightedScore", "加权平均成绩", "百分制成绩"],
+      ranking: ["majorRankPercent", "rankingPercent", "专业排名"],
+      makeupRetakeCourseCount: ["failedCourseCount", "retakeCourseCount", "补考门数", "重修门数"],
+      hasDualDegree: ["dualDegree", "isDualDegree", "双学位"],
+      isUpgradedFromJuniorCollege: ["juniorCollegeUpgrade", "topUpDegree", "专升本"],
       startDate: ["start", "beginDate", "beginTime", "startTime", "入学时间"],
       endDate: ["end", "finishDate", "finishTime", "endTime", "graduationDate", "graduateDate", "毕业时间"],
     },
@@ -695,6 +780,17 @@
   }
 
   function getValueByPath(obj, path) {
+    if (String(path || "").startsWith("derived.highestEducation.")) {
+      const fieldKey = String(path).slice("derived.highestEducation.".length);
+      return getPrimaryEducation(obj)?.[fieldKey] ?? "";
+    }
+    if (String(path || "").startsWith("derived.englishCertificate.")) {
+      const fieldKey = String(path).slice("derived.englishCertificate.".length);
+      return getPrimaryEnglishCertificate(obj)?.[fieldKey] ?? "";
+    }
+    if (path === "derived.achievementCategories") {
+      return deriveAchievementCategories(obj);
+    }
     const segments = String(path || "").split(".").filter(Boolean);
     let current = obj;
     for (const segment of segments) {
@@ -702,6 +798,66 @@
       current = current[segment];
     }
     return current == null ? "" : current;
+  }
+
+  function getPrimaryEducation(profile) {
+    const degreeRank = (value) => {
+      const text = String(value || "").toLowerCase();
+      if (/博士|phd|doctor/.test(text)) return 6;
+      if (/硕士|master|mba/.test(text)) return 5;
+      if (/本科|bachelor|undergraduate/.test(text)) return 4;
+      if (/大专|专科|associate/.test(text)) return 3;
+      if (/高中|highschool/.test(text)) return 2;
+      return 1;
+    };
+    const dateRank = (value) => Number(String(value || "").replace(/\D/g, "").slice(0, 8)) || 0;
+    return (Array.isArray(profile?.educations) ? profile.educations : [])
+      .map((item, index) => {
+        const currentBonus = /在读|预计毕业|current|enrolled|expected/i.test(
+          String(item?.graduationStatus || "")
+        ) ? 1 : 0;
+        return {
+          item,
+          score: degreeRank(item?.degree) * 1e10 + currentBonus * 1e9 + dateRank(item?.endDate) * 10 - index,
+        };
+      })
+      .filter((entry) => isMeaningfulValue(entry.item))
+      .sort((left, right) => right.score - left.score)[0]?.item || null;
+  }
+
+  function getPrimaryEnglishCertificate(profile) {
+    const englishPattern = /(英语|英文|大学英语|cet[-\s]?[四六46]|雅思|ielts|托福|toefl|gre|toeic)/i;
+    const certificates = Array.isArray(profile?.certificates) ? profile.certificates : [];
+    return certificates.find((item) =>
+      englishPattern.test(Object.values(item || {}).join(" "))
+    ) || null;
+  }
+
+  function deriveAchievementCategories(profile) {
+    const categories = new Set();
+    for (const award of Array.isArray(profile?.awards) ? profile.awards : []) {
+      const text = Object.values(award || {}).join(" ");
+      if (/国家|全国/.test(text)) categories.add("国家级荣誉");
+      if (/省级|自治区级|直辖市级/.test(text)) categories.add("省级荣誉");
+      if (/市级/.test(text)) categories.add("市级荣誉");
+      if (/校级|学校/.test(text)) categories.add("校级荣誉");
+    }
+    for (const publication of Array.isArray(profile?.publications) ? profile.publications : []) {
+      if (/\bSCI\b/i.test(Object.values(publication || {}).join(" "))) {
+        categories.add("国际论文SCI");
+      }
+    }
+    for (const patent of Array.isArray(profile?.patents) ? profile.patents : []) {
+      if (/发明/.test(Object.values(patent || {}).join(" "))) {
+        categories.add("发明专利");
+      }
+    }
+    for (const experience of Array.isArray(profile?.campusExperiences) ? profile.campusExperiences : []) {
+      if (/校级.*干部|校级.*职务/.test(Object.values(experience || {}).join(" "))) {
+        categories.add("校级及以上干部职务");
+      }
+    }
+    return Array.from(categories);
   }
 
   function setValueByPath(obj, path, rawValue) {
@@ -985,14 +1141,22 @@
 
   function normalizeResumeProfile(input) {
     const source = input && typeof input === "object" ? input : {};
+    const legacyCampus =
+      source.campusApplication && typeof source.campusApplication === "object"
+        ? source.campusApplication
+        : {};
     const profile = createEmptyResumeProfile();
 
     for (const section of SECTION_DEFINITIONS) {
       if (section.type === "group") {
-        const rawGroup =
+        const currentRawGroup =
           source[section.key] && typeof source[section.key] === "object"
             ? source[section.key]
             : {};
+        const rawGroup =
+          section.key === "applicationDeclarations"
+            ? { ...legacyCampus, ...currentRawGroup }
+            : currentRawGroup;
 
         for (const field of section.fields) {
           const rawValue = pickRawFieldValue(rawGroup, section.key, field.key);
@@ -1006,6 +1170,27 @@
       const rawList = hasExplicitList
         ? source[section.key].slice(0, getListSectionMaxItems(section))
         : [];
+      if (section.key === "educations" && rawList[0] && typeof rawList[0] === "object") {
+        const legacyAcademicValues = {
+          weightedAverageScore: legacyCampus.weightedAverageScore,
+          gpa: legacyCampus.gpa,
+          ranking: legacyCampus.majorRankingPercent,
+          makeupRetakeCourseCount: legacyCampus.makeupRetakeCourseCount,
+          hasDualDegree: legacyCampus.hasDualDegree,
+          isUpgradedFromJuniorCollege: legacyCampus.isUpgradedFromJuniorCollege,
+        };
+        rawList[0] = { ...legacyAcademicValues, ...rawList[0] };
+      }
+      if (
+        section.key === "certificates" &&
+        rawList.length === 0 &&
+        (legacyCampus.englishCertificateName || legacyCampus.englishCertificateScore)
+      ) {
+        rawList.push({
+          name: legacyCampus.englishCertificateName || "英语证书",
+          score: legacyCampus.englishCertificateScore || "",
+        });
+      }
       if (!hasExplicitList) {
         const legacySummary = getLegacyStructuredSummary(source, section.key);
         if (legacySummary) {
@@ -1124,6 +1309,8 @@
       }
     }
 
+    fields.push(...DERIVED_FIELD_DEFINITIONS.map((field) => ({ ...field })));
+
     return fields;
   }
 
@@ -1183,7 +1370,7 @@
   }
 
   window.ResumeSchema = {
-    version: 5,
+    version: 7,
     sections: SECTION_DEFINITIONS,
     clone,
     getSectionDefinition,

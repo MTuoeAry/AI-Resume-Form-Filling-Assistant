@@ -34,6 +34,8 @@ test("popup fill runner sends mode and scope for new fill actions", () => {
   assert.match(html, /id="startSelectionFillBtn"/);
   assert.match(source, /fillMode: actionConfig\.fillMode/);
   assert.match(source, /scope: actionConfig\.scope/);
+  assert.match(source, /actionKey,/);
+  assert.match(source, /fillResponseMatchesRequest/);
   assert.match(source, /incrementalPage/);
   assert.match(source, /selection/);
 });

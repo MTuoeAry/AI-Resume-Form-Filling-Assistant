@@ -103,6 +103,337 @@ test("inferSectionFromTexts recognizes common English resume sections", () => {
   );
 });
 
+test("inferSectionFromTexts separates job preferences from work experience", () => {
+  const section = semantics.inferSectionFromTexts([
+    "求职意向",
+    "期望从事职业",
+    "期望工作城市",
+    "期望月薪(税前)",
+  ]);
+
+  assert.equal(section.key, "jobPreference");
+});
+
+test("common personal, preference, education, work, and language fields map locally", () => {
+  const validPaths = new Set([
+    "personal.email",
+    "jobPreferences.targetRole",
+    "educations.1.school",
+    "workExperiences.0.company",
+    "languages.0.proficiency",
+  ]);
+
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "personal", label: "邮箱" },
+      "",
+      validPaths
+    ),
+    "personal.email"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "jobPreference", label: "期望从事职业" },
+      "",
+      validPaths
+    ),
+    "jobPreferences.targetRole"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "education", sectionItemIndex: 1, label: "学校名称" },
+      "",
+      validPaths
+    ),
+    "educations.1.school"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "work", sectionItemIndex: 0, label: "单位名称" },
+      "",
+      validPaths
+    ),
+    "workExperiences.0.company"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "language", sectionItemIndex: 0, label: "听说" },
+      "",
+      validPaths
+    ),
+    "languages.0.proficiency"
+  );
+});
+
+test("gender controls override an incompatible AI full-name mapping", () => {
+  const validPaths = new Set(["personal.fullName", "personal.gender"]);
+
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      {
+        sectionKey: "",
+        kind: "radio_group",
+        label: "请输入",
+        nearbyLabels: ["性别"],
+        options: ["男", "女"],
+      },
+      "personal.fullName",
+      validPaths
+    ),
+    "personal.gender"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      {
+        sectionKey: "personal",
+        kind: "text",
+        label: "请输入",
+        nearbyLabels: ["姓名", "性别"],
+      },
+      "personal.fullName",
+      validPaths
+    ),
+    "personal.fullName"
+  );
+});
+
+test("education identifiers map to their exact schema fields instead of degree or major", () => {
+  const validPaths = new Set([
+    "educations.0.studyMode",
+    "educations.0.academicSystem",
+    "educations.0.graduationStatus",
+    "educations.0.advisor",
+    "educations.0.ranking",
+    "educations.0.degree",
+    "educations.0.major",
+  ]);
+  const cases = [
+    ["learningModality", "educations.0.studyMode"],
+    ["schoolSystem", "educations.0.academicSystem"],
+    ["eduStatus", "educations.0.graduationStatus"],
+    ["请输入导师姓名", "educations.0.advisor"],
+    ["majorRank", "educations.0.ranking"],
+  ];
+
+  for (const [label, expectedPath] of cases) {
+    assert.equal(
+      semantics.resolvePreferredResumePath(
+        { sectionKey: "education", sectionItemIndex: 0, label },
+        "educations.0.degree",
+        validPaths
+      ),
+      expectedPath
+    );
+  }
+});
+
+test("status-only paper and empty-section checkboxes are rejected conservatively", () => {
+  assert.match(
+    semantics.getUnsupportedMappingReason({
+      kind: "select",
+      sectionKey: "education",
+      label: "paperGrad",
+    }),
+    /论文是否发表/
+  );
+  assert.match(
+    semantics.getUnsupportedMappingReason({
+      kind: "checkbox_group",
+      sectionKey: "internship",
+      label: "暂无实习经历",
+    }),
+    /状态开关/
+  );
+});
+
+test("strong HTML input types reject unrelated resume paths", () => {
+  assert.equal(
+    semantics.isResumePathCompatibleWithField(
+      { inputType: "email", label: "邮箱" },
+      "personal.fullName"
+    ),
+    false
+  );
+  assert.equal(
+    semantics.isResumePathCompatibleWithField(
+      { inputType: "tel", label: "手机号码" },
+      "personal.phoneNumber"
+    ),
+    true
+  );
+  assert.equal(
+    semantics.isResumePathCompatibleWithField(
+      { inputType: "date", label: "出生日期" },
+      "personal.fullName"
+    ),
+    false
+  );
+});
+
+test("ambiguous container text cannot authorize a precise personal mapping", () => {
+  const field = {
+    sectionKey: "personal",
+    label: "请输入",
+    context: "姓名 性别 手机号 紧急联系人姓名 紧急联系人电话",
+  };
+
+  assert.equal(
+    semantics.isResumePathCompatibleWithField(field, "personal.fullName"),
+    false
+  );
+});
+
+test("campus recruitment one-off fields map across generic page sections", () => {
+  const validPaths = new Set([
+    "personal.ethnicity",
+    "personal.heightCm",
+    "identityAndAuthorization.politicalStatus",
+    "derived.highestEducation.weightedAverageScore",
+    "derived.highestEducation.hasDualDegree",
+    "applicationDeclarations.relativesAtEmployer",
+    "contactAndLocation.hometownProvince",
+    "contactAndLocation.hometownCity",
+  ]);
+
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "personal", label: "民族" },
+      "",
+      validPaths
+    ),
+    "personal.ethnicity"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "personal", label: "身高（cm）" },
+      "",
+      validPaths
+    ),
+    "personal.heightCm"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "personal", label: "政治面貌" },
+      "",
+      validPaths
+    ),
+    "identityAndAuthorization.politicalStatus"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "personal", label: "加权平均分" },
+      "",
+      validPaths
+    ),
+    "derived.highestEducation.weightedAverageScore"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "personal", label: "是否双学位" },
+      "",
+      validPaths
+    ),
+    "derived.highestEducation.hasDualDegree"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "work", label: "您是否有亲属在我公司工作" },
+      "",
+      validPaths
+    ),
+    "applicationDeclarations.relativesAtEmployer"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "personal", label: "家庭所在地", compositeRole: "regionProvince" },
+      "",
+      validPaths
+    ),
+    "contactAndLocation.hometownProvince"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "personal", label: "家庭所在地", compositeRole: "regionCity" },
+      "",
+      validPaths
+    ),
+    "contactAndLocation.hometownCity"
+  );
+});
+
+test("internships project into a work-only page without changing stored types", () => {
+  const profile = {
+    workExperiences: [],
+    internships: [
+      { company: "甲公司", endDate: "2026-09" },
+      { company: "乙公司", endDate: "2023-06" },
+    ],
+  };
+  const projection = semantics.buildWorkOnlyExperienceProjection(
+    [{ sectionKey: "work" }],
+    profile
+  );
+
+  assert.deepEqual(
+    projection.map(({ sectionKey, itemIndex }) => ({ sectionKey, itemIndex })),
+    [
+      { sectionKey: "internships", itemIndex: 0 },
+      { sectionKey: "internships", itemIndex: 1 },
+    ]
+  );
+  assert.deepEqual(
+    semantics.projectWorkFieldToExperienceSource(
+      { sectionKey: "work", sectionItemIndex: 1, label: "单位名称" },
+      projection
+    ),
+    {
+      sectionKey: "internship",
+      sectionItemIndex: 1,
+      label: "单位名称",
+      projectedFromSectionKey: "work",
+    }
+  );
+  assert.equal(
+    semantics.buildWorkOnlyExperienceProjection(
+      [{ sectionKey: "work" }, { sectionKey: "internship" }],
+      profile
+    ).length,
+    0
+  );
+});
+
+test("work-only projection preserves ordered company and title label semantics", () => {
+  const validPaths = new Set([
+    "internships.0.company",
+    "internships.0.title",
+  ]);
+  const companyField = {
+    sectionKey: "internship",
+    projectedFromSectionKey: "work",
+    sectionItemIndex: 0,
+    label: "请输入",
+    nearbyLabels: ["公司名称", "职位名称"],
+    context: "工作经历 / 公司名称 / 职位名称",
+  };
+  const titleField = {
+    sectionKey: "internship",
+    projectedFromSectionKey: "work",
+    sectionItemIndex: 0,
+    label: "请输入",
+    nearbyLabels: ["职位名称", "公司名称"],
+    context: "工作经历 / 职位名称 / 公司名称",
+  };
+
+  assert.equal(
+    semantics.resolvePreferredResumePath(companyField, "", validPaths),
+    "internships.0.company"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(titleField, "", validPaths),
+    "internships.0.title"
+  );
+});
+
 test("structured repeat fields resolve by section label and item index", () => {
   const validPaths = new Set([
     "projects.1.highlights",
@@ -307,5 +638,41 @@ test("internship page fields cannot keep a work-experience resume path", () => {
       validPaths
     ),
     "workExperiences.0.company"
+  );
+});
+
+test("practice and competition wording maps through generic resume semantics", () => {
+  assert.equal(
+    semantics.inferSectionFromTexts(["实践活动（包含校内实践或校外实习经历）"]).key,
+    "internship"
+  );
+  assert.equal(
+    semantics.inferSectionFromTexts(["奖励荣誉", "竞赛名称"]).key,
+    "award"
+  );
+
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      {
+        sectionKey: "internship",
+        sectionItemIndex: 1,
+        label: "实践活动/公司名称",
+      },
+      "",
+      new Set(["internships.1.title"])
+    ),
+    "internships.1.title"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      {
+        sectionKey: "award",
+        sectionItemIndex: 2,
+        label: "竞赛描述",
+      },
+      "",
+      new Set(["awards.2.details"])
+    ),
+    "awards.2.details"
   );
 });

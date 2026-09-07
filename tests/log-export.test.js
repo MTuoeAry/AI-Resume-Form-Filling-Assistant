@@ -39,6 +39,15 @@ test("createLogExportPayload keeps logs, stats, and tab metadata", () => {
       url: "https://jobs.example.com/apply/frontend",
       title: "Frontend Engineer / 申请表",
     },
+    operation: {
+      actionKey: "selection",
+      fillMode: "overwrite",
+      scope: "selection",
+    },
+    runtime: {
+      extensionVersion: "1.2.5",
+      expectedContentScriptVersion: "content-v10",
+    },
     stats: {
       fieldCount: 18,
       mappedCount: 16,
@@ -56,6 +65,12 @@ test("createLogExportPayload keeps logs, stats, and tab metadata", () => {
   assert.equal(payload.sessionId, "fill-001");
   assert.equal(payload.status, "success");
   assert.equal(payload.tab.url, "https://jobs.example.com/apply/frontend");
+  assert.deepEqual(payload.operation, {
+    actionKey: "selection",
+    fillMode: "overwrite",
+    scope: "selection",
+  });
+  assert.equal(payload.runtime.extensionVersion, "1.2.5");
   assert.equal(payload.stats.filledCount, 14);
   assert.equal(payload.logs.length, 1);
   assert.equal(payload.logs[0].message, "[扫描] f_1 text label=\"电子邮箱\"");
@@ -67,4 +82,19 @@ test("createLogExportPayload removes query and hash from tab URLs", () => {
   });
 
   assert.equal(payload.tab.url, "https://jobs.example.com/apply");
+});
+
+test("selecting the debug-logs directory does not create nested debug-logs folders", async () => {
+  let childDirectoryRequests = 0;
+  const selectedLogsDirectory = {
+    name: "debug-logs",
+    async getDirectoryHandle() {
+      childDirectoryRequests += 1;
+      return {};
+    },
+  };
+
+  const resolved = await logExport.ensureLogsDirectoryHandle(selectedLogsDirectory);
+  assert.equal(resolved, selectedLogsDirectory);
+  assert.equal(childDirectoryRequests, 0);
 });
