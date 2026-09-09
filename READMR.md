@@ -1,6 +1,6 @@
 # AI简历填表助手
 
-说明：你可能想找的是 `README.md`。本文件与 `README.md` 内容一致，便于兼容不同命名习惯。
+项目介绍、安装和使用方法统一维护在 [README.md](README.md)。
 
-请直接查看：`README.md`
+开发和贡献说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。本文件仅保留旧文件名入口。
 

@@ -40,6 +40,7 @@ test("canonical schema labels keep deterministic semantic mappings", () => {
     campusExperiences: "campus",
     certificates: "certificate",
     languages: "language",
+    familyMembers: "family",
     awards: "award",
     patents: "patent",
     publications: "publication",

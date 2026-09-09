@@ -3,6 +3,14 @@ const assert = require("node:assert/strict");
 
 const semantics = require("../shared/field-semantics.js");
 
+test("inferSectionFromTexts leaves mixed work and project keywords unlocked", () => {
+  const section = semantics.inferSectionFromTexts([
+    "工作经历 项目经历 公司名称 项目名称",
+  ]);
+  assert.equal(section.key, "");
+  assert.equal(section.score, 0);
+});
+
 test("inferSectionFromTexts recognizes education sections", () => {
   const section = semantics.inferSectionFromTexts([
     "教育经历",
@@ -26,6 +34,163 @@ test("inferSectionFromTexts prefers internship over generic work for intern labe
 
   assert.equal(section.key, "internship");
   assert.equal(section.label, "实习经历");
+});
+
+test("self-evaluation labels do not collapse into the personal summary", () => {
+  const validPaths = new Set(["personal.summary", "personal.selfEvaluation", "additional.coverLetterHighlights"]);
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "personal", label: "自我评价" },
+      "",
+      validPaths
+    ),
+    "personal.selfEvaluation"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      {
+        sectionKey: "personal",
+        label: "内容",
+        sectionEvidence: "自我评价",
+        nearbyLabels: ["自我评价"],
+      },
+      "",
+      validPaths
+    ),
+    "personal.selfEvaluation"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "personal", label: "个人简介" },
+      "",
+      validPaths
+    ),
+    "personal.summary"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "personal", label: "内容" },
+      "",
+      validPaths
+    ),
+    ""
+  );
+});
+
+test("emergency-contact relationship stays out of the family section", () => {
+  const section = semantics.inferSectionFromTexts([
+    "紧急联系人姓名",
+    "与本人关系",
+    "紧急联系人电话",
+  ]);
+  assert.notEqual(section.key, "family");
+  const validPaths = new Set([
+    "contactAndLocation.emergencyContactName",
+    "contactAndLocation.emergencyContactRelationship",
+    "contactAndLocation.emergencyContactPhone",
+    "familyMembers.0.relationship",
+  ]);
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "personal", label: "与本人关系" },
+      "",
+      validPaths
+    ),
+    "contactAndLocation.emergencyContactRelationship"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "family", sectionItemIndex: 0, sectionLocked: true, label: "与本人关系" },
+      "",
+      validPaths
+    ),
+    "familyMembers.0.relationship"
+  );
+});
+
+test("inferSectionFromTexts recognizes family member sections", () => {
+  const section = semantics.inferSectionFromTexts([
+    "亲属信息",
+    "亲属姓名",
+    "与本人关系",
+    "是否移动系统内任职",
+  ]);
+  assert.equal(section.key, "family");
+  assert.equal(section.label, "亲属信息");
+});
+
+test("family member fields stay in the family list instead of personal identity", () => {
+  const validPaths = new Set([
+    "personal.fullName",
+    "personal.gender",
+    "personal.birthDate",
+    "personal.phoneNumber",
+    "identityAndAuthorization.politicalStatus",
+    "contactAndLocation.currentAddressLine1",
+    "contactAndLocation.emergencyContactName",
+    "applicationDeclarations.relativesAtEmployer",
+    "familyMembers.0.name",
+    "familyMembers.0.relationship",
+    "familyMembers.0.birthDate",
+    "familyMembers.0.gender",
+    "familyMembers.0.employedAtTargetOrg",
+    "familyMembers.0.employer",
+    "familyMembers.0.title",
+    "familyMembers.0.phone",
+    "familyMembers.0.politicalStatus",
+    "familyMembers.0.currentAddress",
+  ]);
+  const familyField = (label, extra = {}) => ({
+    sectionKey: "family",
+    sectionItemIndex: 0,
+    sectionLocked: true,
+    label,
+    ...extra,
+  });
+
+  assert.equal(
+    semantics.resolvePreferredResumePath(familyField("亲属姓名"), "", validPaths),
+    "familyMembers.0.name"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(familyField("姓名"), "", validPaths),
+    "familyMembers.0.name"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(familyField("紧急联系人姓名"), "", validPaths),
+    "contactAndLocation.emergencyContactName"
+  );
+  assert.equal(
+    semantics.isResumePathCompatibleWithField(
+      familyField("是否在应聘单位任职", { kind: "select", options: ["是", "否"] }),
+      "familyMembers.0.employedAtTargetOrg"
+    ),
+    true
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      familyField("性别", { kind: "select", options: ["", "男", "女"] }),
+      "",
+      validPaths
+    ),
+    "familyMembers.0.gender"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(familyField("是否移动系统内任职"), "", validPaths),
+    "familyMembers.0.employedAtTargetOrg"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(familyField("联系电话", { inputType: "tel" }), "", validPaths),
+    "familyMembers.0.phone"
+  );
+  assert.equal(
+    semantics.resolvePreferredResumePath(
+      { sectionKey: "work", label: "您是否有亲属在我公司工作" },
+      "",
+      validPaths
+    ),
+    "applicationDeclarations.relativesAtEmployer"
+  );
 });
 
 test("inferSectionFromTexts recognizes campus sections", () => {

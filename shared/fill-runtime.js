@@ -84,6 +84,17 @@
       const role = String(runtime?.compositeRole || "").toLowerCase();
       if (["year", "month", "day"].includes(role)) return role;
 
+      const placeholder = normalizeText(runtime?.placeholder || "");
+      if (/^(请选择|请填写|选择)?年(份|度)?$/.test(placeholder) || placeholder === "年") {
+        return "year";
+      }
+      if (/^(请选择|请填写|选择)?月(份)?$/.test(placeholder) || placeholder === "月") {
+        return "month";
+      }
+      if (/^(请选择|请填写|选择)?(日|号)$/.test(placeholder)) {
+        return "day";
+      }
+
       if (runtime?.kind === "select") {
         const options = Array.from(runtime?.el?.options || [])
           .map((option) => normalizeText(option?.textContent || option?.value || ""))
@@ -115,6 +126,13 @@
       const text = String(rawValue ?? "").trim();
       if (!text) return "";
 
+      const explicitPart = ["year", "month", "day"].includes(runtime?.dateComponent)
+        ? runtime.dateComponent
+        : String(runtime?.compositeRole || "").toLowerCase();
+      if (["year", "month", "day"].includes(explicitPart)) {
+        return text;
+      }
+
       if (!isDateLikeRuntime(runtime)) {
         return text;
       }
@@ -128,7 +146,7 @@
       if (precision === "month") {
         if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text.slice(0, 7);
         if (/^\d{4}-\d{2}$/.test(text)) return text;
-        if (/^\d{4}$/.test(text)) return `${text}-01`;
+        return "";
       }
 
       return text;
@@ -154,20 +172,61 @@
       return actual === desired;
     }
 
-    function parseComparableDate(value) {
+    function expandDateOptionCandidates(value) {
+      const text = String(value ?? "").trim();
+      if (!text) return [];
+
+      const parts = parseDateParts(text);
+      if (!parts.year) return [text];
+
+      const year = String(parts.year);
+      if (!parts.month) {
+        return Array.from(new Set([text, year, `${year}年`]));
+      }
+
+      const month = String(parts.month);
+      const mm = month.padStart(2, "0");
+      const variants = [
+        text,
+        `${year}-${mm}`,
+        `${year}/${mm}`,
+        `${year}.${mm}`,
+        `${year}年${mm}月`,
+        `${year}年${month}月`,
+      ];
+      if (parts.day) {
+        const day = String(parts.day);
+        const dd = day.padStart(2, "0");
+        variants.push(
+          `${year}-${mm}-${dd}`,
+          `${year}年${mm}月${dd}日`,
+          `${year}年${month}月${day}日`
+        );
+      }
+      return Array.from(new Set(variants));
+    }
+
+    function parseDateParts(value) {
       const text = String(value || "").trim();
       const match = text.match(
         /^(\d{4})(?:[-/.年]\s*(\d{1,2}))?(?:(?:[-/.月]\s*(\d{1,2})\s*日?)|月)?$/
       );
-      if (match) {
-        return {
-          year: Number(match[1] || 0),
-          month: Number(match[2] || 0),
-          day: Number(match[3] || 0),
-        };
+      if (!match) {
+        return { year: 0, month: 0, day: 0 };
       }
 
-      const usMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      return {
+        year: Number(match[1] || 0),
+        month: Number(match[2] || 0),
+        day: Number(match[3] || 0),
+      };
+    }
+
+    function parseComparableDate(value) {
+      const parts = parseDateParts(value);
+      if (parts.year) return parts;
+
+      const usMatch = String(value || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       return usMatch
         ? {
             year: Number(usMatch[3] || 0),
@@ -177,6 +236,40 @@
         : { year: 0, month: 0, day: 0 };
     }
 
+    function normalizeDatePanelToken(value) {
+      return String(value || "").toLowerCase().replace(/\s+/g, "").trim();
+    }
+
+    function parsePickerMonthToken(value) {
+      const token = normalizeDatePanelToken(value).replace(/[.,]/g, "");
+      const numeric = token.match(/^(1[0-2]|0?[1-9])月?$/);
+      if (numeric) return Number(numeric[1]);
+
+      const monthNames = [
+        ["jan", "january"], ["feb", "february"], ["mar", "march"],
+        ["apr", "april"], ["may"], ["jun", "june"],
+        ["jul", "july"], ["aug", "august"], ["sep", "sept", "september"],
+        ["oct", "october"], ["nov", "november"], ["dec", "december"],
+      ];
+      const index = monthNames.findIndex((aliases) => aliases.includes(token));
+      return index >= 0 ? index + 1 : 0;
+    }
+
+    function getPickerMonthLabels(month) {
+      const fullNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+      ];
+      const fullName = fullNames[Number(month) - 1] || "";
+      return [
+        `${Number(month)}月`,
+        String(Number(month)),
+        String(Number(month)).padStart(2, "0"),
+        fullName,
+        fullName.slice(0, 3),
+      ].filter(Boolean);
+    }
+
     return {
       isDateLikeRuntime,
       isReadonlyDateLikeRuntime,
@@ -184,6 +277,12 @@
       inferRuntimeDatePrecision,
       normalizeValueForRuntime,
       matchesWrittenValue,
+      parseDateParts,
+      expandDateOptionCandidates,
+      parseComparableDate,
+      normalizeDatePanelToken,
+      parsePickerMonthToken,
+      getPickerMonthLabels,
     };
   }
 );

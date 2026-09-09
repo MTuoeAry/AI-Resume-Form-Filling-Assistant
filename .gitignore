@@ -41,3 +41,11 @@ debug-logs/
 
 # Local snapshots / external test packages
 external-test-package-*/
+
+# Local QA output and personal resume exports
+tmp/
+test-results/
+playwright-report/
+output/playwright/
+*.airesume.json
+*.airesume-templates.json

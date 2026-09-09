@@ -115,6 +115,12 @@
           input: "textarea",
           placeholder: "适合用于招聘表单填写的简短自我介绍。",
         },
+        {
+          key: "selfEvaluation",
+          label: "自我评价",
+          input: "textarea",
+          placeholder: "请从性格、能力等方面评价；建议每方面不少于 50 字，全文不超过 500 字。",
+        },
       ],
     },
     {
@@ -133,6 +139,48 @@
         { key: "emergencyContactRelationship", label: "紧急联系人关系", input: "text", placeholder: "父亲 / 母亲 / 配偶" },
         { key: "emergencyContactPhone", label: "紧急联系人电话", input: "tel", placeholder: "13700137000" },
         { key: "timezone", label: "当前时区", input: "text", placeholder: "Asia/Shanghai" },
+      ],
+    },
+    {
+      key: "familyMembers",
+      label: "亲属信息",
+      type: "list",
+      initialItems: 0,
+      minItems: 0,
+      slots: 8,
+      itemLabel: "家庭成员",
+      note: "用于招聘表中的家庭成员或亲属信息；没有时可保持 0 条。",
+      fields: [
+        { key: "name", label: "亲属姓名", input: "text", placeholder: "李四" },
+        {
+          key: "relationship",
+          label: "与本人关系",
+          input: "select",
+          options: ["", "父亲", "母亲", "配偶", "子女", "兄弟", "姐妹", "祖父", "祖母", "其他"],
+        },
+        { key: "birthDate", label: "出生日期", input: "date" },
+        {
+          key: "gender",
+          label: "性别",
+          input: "select",
+          options: ["", "男", "女", "不方便透露"],
+        },
+        {
+          key: "employedAtTargetOrg",
+          label: "是否在应聘单位任职",
+          input: "select",
+          options: ["", "是", "否"],
+        },
+        { key: "employer", label: "工作单位", input: "text", placeholder: "单位名称" },
+        { key: "title", label: "职位", input: "text", placeholder: "职务 / 岗位" },
+        { key: "phone", label: "联系电话", input: "tel", placeholder: "13800138000" },
+        {
+          key: "politicalStatus",
+          label: "政治面貌",
+          input: "select",
+          options: ["", "群众", "中共党员", "中共预备党员", "共青团员", "民主党派", "无党派人士", "其他"],
+        },
+        { key: "currentAddress", label: "现居住地址", input: "text", placeholder: "省 / 市 / 区县 / 详细地址" },
       ],
     },
     {
@@ -273,6 +321,9 @@
           input: "select",
           options: ["", "高中", "大专", "本科", "硕士", "MBA", "博士", "其他"],
         },
+        { key: "academicDegree", label: "学位", input: "select", options: ["", "无", "学士", "硕士", "博士", "其他"] },
+        { key: "isFullTime", label: "是否全日制", input: "select", options: ["", "是", "否"] },
+        { key: "schoolType", label: "院校性质", input: "text", placeholder: "按学校实际情况填写" },
         {
           key: "studyMode",
           label: "培养方式",
@@ -301,6 +352,7 @@
         { key: "advisor", label: "导师", input: "text", placeholder: "王老师" },
         { key: "thesisTitle", label: "论文题目", input: "text", placeholder: "选填" },
         { key: "courses", label: "核心课程", input: "textarea", placeholder: "算法、操作系统、机器学习..." },
+        { key: "majorDescription", label: "专业描述", input: "textarea", placeholder: "该专业的学习内容与培养方向" },
         { key: "description", label: "补充说明", input: "textarea", placeholder: "交换经历、荣誉、研究方向等" },
       ],
     },
@@ -447,7 +499,7 @@
       type: "list",
       initialItems: 0,
       minItems: 0,
-      slots: 5,
+      slots: 8,
       itemLabel: "语言能力",
       note: "没有时可保持 0 条。",
       fields: [
@@ -459,6 +511,11 @@
           options: ["", "母语", "流利", "工作熟练", "中等", "基础"],
         },
         { key: "testScore", label: "语言成绩", input: "text", placeholder: "雅思 7.5 / 托福 105 / CET-6" },
+        { key: "examType", label: "考试类型", input: "text", placeholder: "CET / IELTS / TOEFL / TEM" },
+        { key: "examLevel", label: "考试等级", input: "text", placeholder: "4 / 6 / 8" },
+        { key: "scoreValue", label: "考试得分", input: "text", placeholder: "425 / 7.5 / 105" },
+        { key: "scoreScale", label: "分制", input: "text", placeholder: "仅在原文明确时填写" },
+        { key: "cefrLevel", label: "CEFR 等级", input: "text", placeholder: "B2" },
       ],
     },
     {
@@ -467,7 +524,7 @@
       type: "list",
       initialItems: 0,
       minItems: 0,
-      slots: 8,
+      slots: 16,
       itemLabel: "获奖经历",
       note: "用于奖学金、竞赛奖项、荣誉称号等结构化信息；没有时可保持 0 条。",
       fields: [
@@ -617,6 +674,7 @@
       nationality: ["countryOrRegion", "nationalityOrRegion", "国籍", "国籍/地区"],
       heightCm: ["height", "heightInCm", "身高"],
       weightKg: ["weight", "weightInKg", "体重"],
+      selfEvaluation: ["selfAssessment", "selfIntro", "selfComment", "自我评价", "自我评述"],
     },
     contactAndLocation: {
       hometownCity: ["hometown", "nativePlace", "birthPlace", "籍贯"],
@@ -673,6 +731,34 @@
     campusExperiences: {
       startDate: ["start", "beginDate", "beginTime", "startTime"],
       endDate: ["end", "finishDate", "finishTime", "endTime"],
+    },
+    languages: {
+      name: ["language", "languageName", "languageType", "外语能力类型", "语种"],
+      proficiency: ["level", "languageLevel", "熟练程度", "掌握程度"],
+      testScore: ["score", "languageScore", "certificateScore", "语言成绩"],
+      examType: ["exam", "certificateType", "考试类型"],
+      examLevel: ["examGrade", "certificateLevel", "考试等级"],
+      scoreValue: ["examScore", "numericScore", "考试得分"],
+      scoreScale: ["scale", "scoreSystem", "分制"],
+      cefrLevel: ["cefr", "cefrGrade"],
+    },
+    familyMembers: {
+      name: ["relativeName", "memberName", "亲属姓名"],
+      relationship: ["relation", "relationToSelf", "与本人关系"],
+      birthDate: ["birthday", "dateOfBirth", "dob", "出生日期"],
+      gender: ["sex", "性别"],
+      employedAtTargetOrg: [
+        "employedInSystem",
+        "worksAtEmployer",
+        "worksAtTargetOrg",
+        "是否在应聘单位任职",
+        "系统内任职",
+      ],
+      employer: ["workUnit", "company", "workPlace", "工作单位", "亲属工作单位"],
+      title: ["position", "jobTitle", "职位", "亲属职位"],
+      phone: ["mobile", "telephone", "联系电话"],
+      politicalStatus: ["politicalAffiliation", "政治面貌"],
+      currentAddress: ["residence", "address", "现居住地址"],
     },
     awards: {
       date: ["awardDate", "time", "获奖时间"],
@@ -1073,6 +1159,76 @@
     }
 
     migrateMisclassifiedInternships(profile);
+    migrateLanguageExamFields(profile);
+  }
+
+  function parseLanguageExamText(value) {
+    const raw = String(value || "").trim();
+    const empty = {
+      examType: "",
+      examLevel: "",
+      scoreValue: "",
+      scoreScale: "",
+      cefrLevel: "",
+      ambiguous: false,
+    };
+    if (!raw) return empty;
+
+    const compact = raw.replace(/\s+/g, "");
+    const examHits = [];
+    if (/cet|大学英语|四级|六级/i.test(compact) && !/tem|专四|专八/i.test(compact)) examHits.push("CET");
+    if (/tem|专四|专八/i.test(compact)) examHits.push("TEM");
+    if (/雅思|ielts/i.test(compact)) examHits.push("IELTS");
+    if (/托福|toefl/i.test(compact)) examHits.push("TOEFL");
+    if (examHits.length > 1) {
+      return { ...empty, ambiguous: true };
+    }
+
+    const cefrMatch = compact.match(/\b([ABC][12])\b/i);
+    if (/^英语(良好|一般|熟练|精通)$/.test(compact) && examHits.length === 0) {
+      return empty;
+    }
+
+    if (examHits[0] === "CET") {
+      const level = /六级|cet-?6|cet6/i.test(compact) ? "6" : /四级|cet-?4|cet4/i.test(compact) ? "4" : "";
+      const score = compact.match(/(\d{3,4})分?/);
+      return {
+        ...empty,
+        examType: "CET",
+        examLevel: level,
+        scoreValue: score ? score[1] : "",
+      };
+    }
+    if (examHits[0] === "TEM") {
+      const level = /专八|tem-?8|tem8/i.test(compact) ? "8" : /专四|tem-?4|tem4/i.test(compact) ? "4" : "";
+      return { ...empty, examType: "TEM", examLevel: level };
+    }
+    if (examHits[0] === "IELTS") {
+      const score = compact.match(/(\d(?:\.\d)?)/);
+      return { ...empty, examType: "IELTS", scoreValue: score ? score[1] : "" };
+    }
+    if (examHits[0] === "TOEFL") {
+      const score = compact.match(/(\d{2,3})/);
+      return { ...empty, examType: "TOEFL", scoreValue: score ? score[1] : "" };
+    }
+    if (cefrMatch && examHits.length === 0) {
+      return { ...empty, cefrLevel: cefrMatch[1].toUpperCase() };
+    }
+    return empty;
+  }
+
+  function migrateLanguageExamFields(profile) {
+    const items = Array.isArray(profile.languages) ? profile.languages : [];
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      const parsed = parseLanguageExamText(item.testScore);
+      if (parsed.ambiguous) continue;
+      if (!item.examType && parsed.examType) item.examType = parsed.examType;
+      if (!item.examLevel && parsed.examLevel) item.examLevel = parsed.examLevel;
+      if (!item.scoreValue && parsed.scoreValue) item.scoreValue = parsed.scoreValue;
+      if (!item.scoreScale && parsed.scoreScale) item.scoreScale = parsed.scoreScale;
+      if (!item.cefrLevel && parsed.cefrLevel) item.cefrLevel = parsed.cefrLevel;
+    }
   }
 
   function isInternshipLikeWorkItem(item) {
@@ -1370,7 +1526,7 @@
   }
 
   window.ResumeSchema = {
-    version: 7,
+    version: 11,
     sections: SECTION_DEFINITIONS,
     clone,
     getSectionDefinition,
@@ -1378,6 +1534,7 @@
     createEmptyListItem,
     createEmptyResumeProfile,
     normalizeResumeProfile,
+    parseLanguageExamText,
     getFieldCatalog,
     getCatalogWithValues,
     getValueByPath,

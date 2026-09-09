@@ -66,13 +66,15 @@ async function callAI(modelId, prompt, mode) {
 - fields：当前页面识别到的表单字段
 - fields 中的单个 field 可能额外带有 sectionKey、sectionLabel、sectionEvidence、sectionItemIndex、nearbyLabels、compositeRole，用于表示扫描阶段推断出的区块、重复条目序号、邻近标签及复合控件角色
 - resumeFields：预先定义好的标准简历字段目录（含 path、label、sectionLabel、itemLabel、aliases、hasValue、valuePreview 等）
+- field.allowedResumePaths 若存在，是根据 DOM 区块与条目限定的候选路径；只能从中选择，空数组表示没有可用来源，必须返回空路径
 
 你的任务：
 1) 为每个页面 field 选择最合适的 resumePath
 2) 只做“字段映射”，不要生成最终填写值
 3) 若字段需要简单转换，可返回 transform
 4) 若没有合适字段，resumePath 返回空字符串
-5) 只输出 JSON（不要输出其它文本，不要 Markdown 代码块）
+5) field.allowedResumePaths 若存在，只能从该列表选择 resumePath；不得返回列表之外的路径、指令或不存在的记录。空数组表示没有可用来源，必须返回空路径
+6) 只输出 JSON（不要输出其它文本，不要 Markdown 代码块）
 
 映射原则：
 1) 优先综合 field 的 label、context、options、sectionLabel、sectionEvidence、nearbyLabels、所在区块语义，与 resumeFields 的 label、sectionLabel、itemLabel、path、valuePreview 一起判断
@@ -80,6 +82,7 @@ async function callAI(modelId, prompt, mode) {
 3) compositeRole=start/end 时分别映射开始/结束时间；countryCode/nationalNumber 时分别映射国际区号/本地号码；type/value 时分别映射证件类型/证件号码
 4) 如果 field.label 为空但 sectionLabel / nearbyLabels 不为空，必须充分利用这些扫描线索，不要把它当成完全无信息字段
 5) sectionItemIndex 从 0 开始；项目、获奖、专利、论文等重复区块必须映射到相同序号的 resumeFields 条目，不得把第 2、3 条继续映射到第 1 条
+6) 学历层次 degree 与学位 academicDegree 是不同事实；“是否最高学历”等布尔问题不能映射到学历名称；专业课程 courses、专业描述 majorDescription 与专业 major 必须区分
 
 校招场景优先级：
 1) 含“实习”“实习经历”“实习公司”“实习岗位”等语义时，优先映射到 internships.*，不要优先映射到 workExperiences.*；但如果页面只有“工作经历”而没有任何“实习经历”区块，可将该页面的工作经历字段按条目序号临时映射到 internships.*，这只是页面适配，不改变简历数据的经历类型

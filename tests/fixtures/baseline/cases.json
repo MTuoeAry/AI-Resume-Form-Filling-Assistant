@@ -1,0 +1,160 @@
+[
+  {
+    "id": "L1-semantic-identifier",
+    "kind": "development",
+    "url": "https://layout-one.example/apply",
+    "fillMode": "overwrite",
+    "html": "<main><section id=\"educationInfo\"><h2>教育经历</h2><label for=\"l1-school\">学校名称</label><input id=\"l1-school\"><label for=\"l1-major\">专业名称</label><input id=\"l1-major\"><label for=\"l1-start\">开始时间</label><input id=\"l1-start\"><label for=\"l1-end\">结束时间</label><input id=\"l1-end\"></section></main>",
+    "profile": {
+      "educations": [
+        {
+          "school": "Example University",
+          "major": "Computer Science",
+          "startDate": "2021-09",
+          "endDate": "2025-06"
+        }
+      ]
+    },
+    "fieldPaths": {
+      "l1-school": "educations.0.school",
+      "l1-major": "educations.0.major",
+      "l1-start": "educations.0.startDate",
+      "l1-end": "educations.0.endDate"
+    },
+    "values": {
+      "l1-school": "Example University",
+      "l1-major": "Computer Science",
+      "l1-start": "2021-09",
+      "l1-end": "2025-06"
+    }
+  },
+  {
+    "id": "L2-native-associated-labels",
+    "kind": "development",
+    "url": "https://layout-two.example/form",
+    "fillMode": "overwrite",
+    "html": "<form><fieldset><legend>Education</legend><label for=\"company\">School name</label><input id=\"company\"><label for=\"position\">Major</label><input id=\"position\"><label for=\"projectStart\">Start date</label><input id=\"projectStart\"><label for=\"projectEnd\">End date</label><input id=\"projectEnd\"></fieldset></form>",
+    "profile": {
+      "educations": [
+        {
+          "school": "Native Form University",
+          "major": "Software Engineering",
+          "startDate": "2020-09",
+          "endDate": "2024-06"
+        }
+      ]
+    },
+    "fieldPaths": {
+      "company": "educations.0.school",
+      "position": "educations.0.major",
+      "projectStart": "educations.0.startDate",
+      "projectEnd": "educations.0.endDate"
+    },
+    "values": {
+      "company": "Native Form University",
+      "position": "Software Engineering",
+      "projectStart": "2020-09",
+      "projectEnd": "2024-06"
+    }
+  },
+  {
+    "id": "L3-repeated-cards-out-of-order",
+    "kind": "development",
+    "url": "https://layout-three.example/projects",
+    "fillMode": "incremental",
+    "html": "<section><h2>项目经历</h2><article class=\"card\"><label for=\"p2-name\">项目名称</label><input id=\"p2-name\" value=\"Second Project\"><label for=\"p2-role\">项目职责</label><input id=\"p2-role\"></article><article class=\"card\"><label for=\"p1-name\">项目名称</label><input id=\"p1-name\" value=\"First Project\"><label for=\"p1-role\">项目职责</label><input id=\"p1-role\"></article></section>",
+    "profile": {
+      "projects": [
+        {
+          "name": "First Project",
+          "role": "First Owner"
+        },
+        {
+          "name": "Second Project",
+          "role": "Second Owner"
+        }
+      ]
+    },
+    "fieldPaths": {
+      "p2-name": "projects.1.name",
+      "p2-role": "projects.1.role",
+      "p1-name": "projects.0.name",
+      "p1-role": "projects.0.role"
+    },
+    "values": {
+      "p2-name": "Second Project",
+      "p2-role": "Second Owner",
+      "p1-name": "First Project",
+      "p1-role": "First Owner"
+    }
+  },
+  {
+    "id": "H1-aria-project-region",
+    "kind": "regression",
+    "url": "https://holdout-one.example/apply",
+    "fillMode": "overwrite",
+    "html": "<main><div role=\"region\" aria-label=\"Project experience\"><label for=\"h1-name\">Project name</label><input id=\"h1-name\"><label for=\"h1-role\">Responsibilities</label><textarea id=\"h1-role\"></textarea></div></main>",
+    "profile": {
+      "projects": [
+        {
+          "name": "Holdout Project",
+          "role": "Researcher"
+        }
+      ]
+    },
+    "fieldPaths": {
+      "h1-name": "projects.0.name",
+      "h1-role": "projects.0.role"
+    },
+    "values": {
+      "h1-name": "Holdout Project",
+      "h1-role": "Researcher"
+    }
+  },
+  {
+    "id": "H2-random-internship-container",
+    "kind": "holdout",
+    "url": "https://holdout-two.example/campus",
+    "fillMode": "overwrite",
+    "html": "<main><div id=\"random-908\"><h3>实习经历</h3><label for=\"h2-company\">工作单位</label><input id=\"h2-company\"><label for=\"h2-title\">职位名称</label><input id=\"h2-title\"></div></main>",
+    "profile": {
+      "internships": [
+        {
+          "company": "Holdout Technology",
+          "title": "Engineering Intern"
+        }
+      ]
+    },
+    "fieldPaths": {
+      "h2-company": "internships.0.company",
+      "h2-title": "internships.0.title"
+    },
+    "values": {
+      "h2-company": "Holdout Technology",
+      "h2-title": "Engineering Intern"
+    }
+  },
+  {
+    "id": "H3-accessible-publication-group",
+    "kind": "holdout",
+    "url": "https://holdout-three.example/research",
+    "fillMode": "overwrite",
+    "html": "<main><fieldset aria-label=\"Publications\"><label for=\"h3-title\">Paper title</label><input id=\"h3-title\"><label for=\"h3-venue\">Journal name</label><input id=\"h3-venue\"></fieldset></main>",
+    "profile": {
+      "publications": [
+        {
+          "title": "A Fictional Study",
+          "venue": "Example Journal"
+        }
+      ]
+    },
+    "fieldPaths": {
+      "h3-title": "publications.0.title",
+      "h3-venue": "publications.0.venue"
+    },
+    "values": {
+      "h3-title": "A Fictional Study",
+      "h3-venue": "Example Journal"
+    }
+  }
+]

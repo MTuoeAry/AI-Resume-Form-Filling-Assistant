@@ -1,6 +1,6 @@
 {
   "name": "ai-resume-form-filling-assistant",
-  "version": "1.2.7",
+  "version": "1.3.0",
   "private": true,
   "description": "Tests for the AI Resume Form Filling Assistant Chrome extension",
   "engines": {
@@ -8,6 +8,11 @@
   },
   "scripts": {
     "test": "node --test tests/*.js",
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.cjs",
     "check": "npm test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "jsdom": "^26.1.0"
   }
 }

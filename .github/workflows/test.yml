@@ -23,6 +23,9 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
+      - name: Install test dependencies
+        run: npm ci
+
       - name: Run tests
         run: npm test
 
@@ -32,7 +35,9 @@ jobs:
           set -euo pipefail
           while IFS= read -r file; do
             node --check "$file"
-          done < <(git ls-files '*.js')
+          done < <(git ls-files '*.js' '*.cjs')
+          node --check tests/e2e/extension.spec.cjs
+          node --check tests/e2e/playwright.config.cjs
 
       - name: Check JSON configuration
         run: |
@@ -51,3 +56,33 @@ jobs:
             console.log(`valid JSON: ${file}`);
           }
           NODE
+
+  chrome-extension-e2e:
+    name: Chrome extension E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install test dependencies
+        run: npm ci
+
+      - name: Set up system Chrome executable
+        id: chrome
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: stable
+          install-dependencies: true
+
+      - name: Run unpacked extension E2E
+        run: xvfb-run --auto-servernum npm run test:e2e
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}

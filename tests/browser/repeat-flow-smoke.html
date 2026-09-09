@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>逐条经历填写验收</title>
+    <style>
+      body { max-width: 880px; margin: 30px auto; font: 16px system-ui; color: #25304c; background: #f5f7fb; }
+      section, fieldset { padding: 24px; background: white; border: 0; border-radius: 12px; margin: 20px 0; }
+      label, dl { display: flex; gap: 12px; margin: 10px 0; }
+      input { padding: 8px; border: 1px solid #adb8cb; border-radius: 4px; }
+      button { padding: 10px 16px; margin-right: 8px; }
+      output { display: block; white-space: pre-wrap; margin: 20px 0; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <h1>逐条经历填写验收</h1>
+    <p>虚构数据；不联网、不提交。覆盖“填完才能新增”流程。英文 holdout 页请用扩展 E2E 的 holdout-education.html。</p>
+    <button id="run">运行逐条教育验收</button>
+    <output id="result">等待运行</output>
+    <main>
+      <section>
+        <h2>教育经历</h2>
+        <div id="edu-editor" class="card">
+          <dl><dt>学校名称</dt><dd><input id="school"></dd></dl>
+          <dl><dt>开始时间</dt><dd><input id="start"></dd></dl>
+        </div>
+        <div id="edu-cards"></div>
+        <button type="button" id="add-edu" disabled>新增教育经历</button>
+        <button type="submit" id="submit-app">提交申请</button>
+      </section>
+    </main>
+    <script src="repeat-flow-smoke.js"></script>
+    <script src="../../shared/resume-schema.js"></script>
+    <script src="../../shared/diagnostics.js"></script>
+    <script src="../../shared/field-text.js"></script>
+    <script src="../../shared/field-concepts.js"></script>
+    <script src="../../shared/mapping-policy.js"></script>
+    <script src="../../shared/field-semantics.js"></script>
+    <script src="../../shared/page-structure.js"></script>
+    <script src="../../shared/repeat-alignment.js"></script>
+    <script src="../../shared/repeat-flow.js"></script>
+    <script src="../../shared/fill-runtime.js"></script>
+    <script src="../../shared/site-adapters.js"></script>
+    <script src="../../shared/content-bridge.js"></script>
+    <script src="../../shared/ai-client.js"></script>
+    <script src="../../content.js"></script>
+  </body>
+</html>

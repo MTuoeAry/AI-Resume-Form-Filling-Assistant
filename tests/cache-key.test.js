@@ -10,7 +10,7 @@ function loadCacheKeyHelpers() {
     "utf8"
   );
 
-  const start = source.indexOf("function createMappingCacheSignature(fields) {");
+  const start = source.indexOf("function mappingRuleVersion() {");
   const end = source.indexOf("async function loadMappingCacheEntry(cacheKey, meta = {})");
   if (start === -1 || end === -1) {
     throw new Error("Failed to locate cache key helpers in content.js");

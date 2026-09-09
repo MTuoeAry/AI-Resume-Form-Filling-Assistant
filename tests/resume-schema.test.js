@@ -149,8 +149,15 @@ test("resume schema v7 keeps academic fields on education records and derives su
   const schema = loadResumeSchema();
   const catalog = schema.getFieldCatalog({ mode: "max" });
 
-  assert.equal(schema.version, 7);
+  assert.equal(schema.version, 11);
   assert.ok(catalog.some((field) => field.path === "awards.0.name"));
+  assert.ok(catalog.some((field) => field.path === "familyMembers.0.name"));
+  assert.ok(catalog.some((field) => field.path === "familyMembers.0.employedAtTargetOrg"));
+  assert.ok(catalog.some((field) => field.path === "personal.selfEvaluation"));
+  assert.ok(catalog.some((field) => field.path === "languages.0.examType"));
+  assert.ok(catalog.some((field) => field.path === "languages.0.examLevel"));
+  assert.ok(catalog.some((field) => field.path === "languages.0.scoreValue"));
+  assert.ok(catalog.some((field) => field.path === "languages.0.cefrLevel"));
   assert.ok(catalog.some((field) => field.path === "patents.0.number"));
   assert.ok(catalog.some((field) => field.path === "publications.0.title"));
   assert.ok(catalog.some((field) => field.path === "customFields.0.value"));
@@ -330,4 +337,57 @@ test("obviously misclassified internships migrate out of work experiences", () =
   assert.equal(normalized.internships[0].title, "后端开发实习生");
   assert.equal(normalized.workExperiences.length, 1);
   assert.equal(normalized.workExperiences[0].company, "正式工作单位");
+});
+
+test("language exam text migrates into explicit fields without overwriting or dropping the original", () => {
+  const schema = loadResumeSchema();
+  const first = schema.normalizeResumeProfile({
+    languages: [
+      { name: "英语", testScore: "大学英语六级 425分" },
+      { name: "英语", testScore: "雅思 7.5" },
+      { name: "英语", testScore: "托福 105" },
+      { name: "英语", testScore: "CET-6" },
+      { name: "英语", testScore: "英语良好" },
+      { name: "英语", testScore: "六级/雅思7.5" },
+      { name: "英语", testScore: "CET-6", examType: "USER", examLevel: "X" },
+    ],
+  });
+  assert.equal(first.languages[0].testScore, "大学英语六级 425分");
+  assert.equal(first.languages[0].examType, "CET");
+  assert.equal(first.languages[0].examLevel, "6");
+  assert.equal(first.languages[0].scoreValue, "425");
+  assert.equal(first.languages[1].examType, "IELTS");
+  assert.equal(first.languages[1].scoreValue, "7.5");
+  assert.equal(first.languages[2].examType, "TOEFL");
+  assert.equal(first.languages[2].scoreValue, "105");
+  assert.equal(first.languages[3].examType, "CET");
+  assert.equal(first.languages[3].examLevel, "6");
+  assert.equal(first.languages[4].examType, "");
+  assert.equal(first.languages[5].examType, "");
+  assert.equal(first.languages[6].examType, "USER");
+  assert.equal(first.languages[6].examLevel, "X");
+
+  const second = schema.normalizeResumeProfile(first);
+  assert.deepEqual(second.languages, first.languages);
+});
+
+test("T19 single document roundtrip keeps original language text and new exam fields", () => {
+  const schema = loadResumeSchema();
+  const profileDocument = require("../shared/profile-document.js");
+  const profile = schema.normalizeResumeProfile({
+    languages: [{ name: "英语", testScore: "大学英语六级 425分", cefrLevel: "" }],
+  });
+  const serialized = profileDocument.serializeDocument({
+    profile,
+    schemaVersion: schema.version,
+    extensionVersion: "1.3.0",
+  });
+  const parsed = profileDocument.parseDocument(serialized, {
+    currentSchemaVersion: schema.version,
+    normalizeProfile: (value) => schema.normalizeResumeProfile(value),
+  });
+  assert.equal(parsed.profile.languages[0].testScore, "大学英语六级 425分");
+  assert.equal(parsed.profile.languages[0].examType, "CET");
+  assert.equal(parsed.profile.languages[0].examLevel, "6");
+  assert.equal(parsed.profile.languages[0].scoreValue, "425");
 });

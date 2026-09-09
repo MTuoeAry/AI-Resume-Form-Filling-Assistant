@@ -58,6 +58,11 @@ test("createLogExportPayload keeps logs, stats, and tab metadata", () => {
         level: "info",
         message: "[扫描] f_1 text label=\"电子邮箱\"",
         timestamp: "2026-04-15T13:30:46.000Z",
+        event: {
+          type: "field",
+          fieldId: "f_1",
+          section: { key: "personal", locked: true, itemIndex: null },
+        },
       },
     ],
   });
@@ -74,6 +79,11 @@ test("createLogExportPayload keeps logs, stats, and tab metadata", () => {
   assert.equal(payload.stats.filledCount, 14);
   assert.equal(payload.logs.length, 1);
   assert.equal(payload.logs[0].message, "[扫描] f_1 text label=\"电子邮箱\"");
+  assert.deepEqual(payload.logs[0].event, {
+    type: "field",
+    fieldId: "f_1",
+    section: { key: "personal", locked: true, itemIndex: null },
+  });
 });
 
 test("createLogExportPayload removes query and hash from tab URLs", () => {

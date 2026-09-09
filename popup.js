@@ -14,6 +14,7 @@ const mappedCountEl = document.getElementById("mappedCount");
 const filledCountEl = document.getElementById("filledCount");
 
 const startFillBtn = document.getElementById("startFillBtn");
+const stopFillBtn = document.getElementById("stopFillBtn");
 const startFillBtnText = document.getElementById("startFillBtnText");
 const startIncrementalFillBtn = document.getElementById("startIncrementalFillBtn");
 const startIncrementalFillBtnText = document.getElementById(
@@ -25,6 +26,8 @@ const startSelectionFillBtnText = document.getElementById(
 );
 const clearMappingCacheBtn = document.getElementById("clearMappingCacheBtn");
 const fillTipEl = document.getElementById("fillTip");
+const mappingDecisionsEl = document.getElementById("mappingDecisions");
+const conceptMemoryListEl = document.getElementById("conceptMemoryList");
 
 const resumeNavEl = document.getElementById("resumeNav");
 const resumeFormHost = document.getElementById("resumeFormHost");
@@ -125,12 +128,15 @@ const RESUME_TEMPLATES_KEY = resumeStorage.keys.templates;
 const RESUME_ACTIVE_TEMPLATE_KEY = resumeStorage.keys.activeTemplateId;
 const RESUME_LEGACY_PROFILE_KEY = resumeStorage.keys.profile;
 const RESUME_LEGACY_RAW_TEXT_KEY = resumeStorage.keys.rawText;
-const MAPPING_CACHE_KEY = "fieldMappingCacheV13";
+const MAPPING_CACHE_KEY = "fieldMappingCacheV15";
+const FIELD_CONCEPT_MEMORY_KEY = "fieldConceptMemoryV1";
 
 const BUILTIN_MODEL = modelStorage.DEFAULT_MODEL;
 
 let editingModelId = null;
 let isFilling = false;
+let activeFillTabId = null;
+let stopFillRequested = false;
 let isImporting = false;
 let isResumeDirty = false;
 let resumeProfile = schema.createEmptyResumeProfile();
@@ -141,6 +147,7 @@ let templateNameMode = null;
 const collapsedResumeSections = new Set();
 let logProjectRootHandle = null;
 let activeFillSession = null;
+const sessionDecisions = new Map();
 
 const FILL_ACTIONS = {
   overwritePage: {
@@ -172,6 +179,118 @@ const FILL_ACTIONS = {
   },
 };
 
+const libraryTemplateSelect = document.getElementById("libraryTemplateSelect");
+const chooseRecordTargetBtn = document.getElementById("chooseRecordTargetBtn");
+const clearRecordTargetBtn = document.getElementById("clearRecordTargetBtn");
+const recordTargetStatus = document.getElementById("recordTargetStatus");
+const libraryFeedback = document.getElementById("libraryFeedback");
+let selectedRecordTarget = null;
+const resumeLibrary = window.ResumeLibrary.createView(document.getElementById("resumeLibrary"), {
+  schema, onFill: fillLibraryRecord, onCopy: copyLibraryText,
+});
+
+async function copyLibraryText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    libraryFeedback.textContent = "已复制";
+    return true;
+  } catch (_) {
+    libraryFeedback.textContent = "复制未获浏览器允许，请直接选中下方文字后按 Ctrl+C（Mac：⌘C）。";
+    return false;
+  }
+}
+
+function updateLibraryAvailability() {
+  resumeLibrary.updateState({ busy: isFilling, targetReady: Boolean(selectedRecordTarget) });
+  chooseRecordTargetBtn.disabled = isFilling;
+  clearRecordTargetBtn.disabled = isFilling || !selectedRecordTarget;
+  libraryTemplateSelect.disabled = isFilling;
+}
+
+async function resetLibraryTarget(message = "尚未选择区域；查看和复制随时可用。") {
+  const previous = selectedRecordTarget;
+  selectedRecordTarget = null;
+  recordTargetStatus.textContent = message;
+  document.getElementById("recordOverwrite").checked = false;
+  updateLibraryAvailability();
+  if (previous) {
+    try { await sendTabMessage(previous.tabId, { action: "clearRecordTarget" }); } catch (_) { /* Page closed or navigated. */ }
+  }
+}
+
+chooseRecordTargetBtn.addEventListener("click", async () => {
+  if (isFilling) return;
+  isFilling = true;
+  updateStartFillAvailability();
+  try {
+    await resetLibraryTarget("请在网页中拖拽框选一条经历的编辑区，按 Esc 取消。");
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !isSupportedWebPageUrl(tab.url)) throw new Error("请切换到要填写的招聘网页后再选区。");
+    if (!await ensureContentScriptInjected(tab.id)) throw new Error("请重新加载扩展并刷新招聘网页，再选择区域。");
+    const result = await sendTabMessage(tab.id, { action: "selectRecordTarget" });
+    if (!result?.success) throw new Error(result?.message || "未完成选区。");
+    const current = await chrome.tabs.get(tab.id);
+    if (current.url !== tab.url) throw new Error("网页地址已变化，请重新选择区域。");
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (activeTab?.id !== tab.id) {
+      await sendTabMessage(tab.id, { action: "clearRecordTarget" });
+      throw new Error("已切换网页，请在当前网页重新选区。");
+    }
+    selectedRecordTarget = { tabId: tab.id, url: tab.url, token: result.token };
+    recordTargetStatus.textContent = `${result.label} · 已选 ${result.fieldCount} 个字段（蓝框）。现在选择下方一条经历。`;
+    libraryFeedback.textContent = "新增和保存由你操作；网页编辑区变化后请重新选区。";
+  } catch (error) {
+    recordTargetStatus.textContent = error.message;
+  } finally {
+    isFilling = false;
+    updateStartFillAvailability();
+  }
+});
+clearRecordTargetBtn.addEventListener("click", () => resetLibraryTarget());
+libraryTemplateSelect.addEventListener("change", async () => {
+  await resetLibraryTarget("已切换模板，请重新选择网页区域；复制可直接使用。");
+  await switchActiveTemplate(libraryTemplateSelect.value);
+});
+
+async function fillLibraryRecord(sectionKey, index) {
+  if (isFilling || !selectedRecordTarget) return;
+  const record = resumeProfile[sectionKey]?.[index];
+  if (!record) { libraryFeedback.textContent = "资料已变化，请重新选择。"; return; }
+  const target = { ...selectedRecordTarget };
+  const sourceRecord = schema.clone(record);
+  isFilling = true;
+  updateStartFillAvailability();
+  libraryFeedback.textContent = "正在填写所选记录…";
+  try {
+    const tab = await chrome.tabs.get(target.tabId);
+    if (tab.url !== target.url) throw new Error("目标网页已变化，请重新选区。");
+    const activeModel = await getActiveModel();
+    const response = await sendTabMessage(target.tabId, {
+      action: "fillSelectedRecord", token: target.token, sectionKey, record: sourceRecord,
+      overwrite: document.getElementById("recordOverwrite").checked,
+      modelId: isModelConfigured(activeModel) ? activeModel.id : "",
+    });
+    if (!response?.success) throw new Error(response?.message || "填写失败，请重新选区或复制补填。");
+    libraryFeedback.textContent = response.message;
+    addLog("info", `指定经历填入：${response.message}`);
+  } catch (error) {
+    libraryFeedback.textContent = error.message;
+    await resetLibraryTarget("请重新选择网页区域；也可以直接复制资料。");
+  } finally {
+    isFilling = false;
+    updateStartFillAvailability();
+  }
+}
+
+chrome.tabs.onActivated?.addListener(({ tabId }) => {
+  if (selectedRecordTarget && tabId !== selectedRecordTarget.tabId) resetLibraryTarget("已切换网页，请重新选区。");
+});
+chrome.tabs.onUpdated?.addListener((tabId, change) => {
+  if (selectedRecordTarget?.tabId === tabId && (change.status === "loading" || change.url)) {
+    resetLibraryTarget("网页已刷新或跳转，请重新选区。");
+  }
+});
+
 document.addEventListener("DOMContentLoaded", async () => {
   initTabs();
   initModalEvents();
@@ -181,10 +300,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   await initModels();
   await refreshLogExportStatus();
   await loadResumeProfile();
+  await renderConceptMemories();
   updateStartFillAvailability();
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes[FIELD_CONCEPT_MEMORY_KEY]) {
+    renderConceptMemories().catch(() => {});
+  }
   if (areaName !== "local" && areaName !== "sync") return;
   if (
     !changes[RESUME_TEMPLATES_KEY] &&
@@ -225,6 +348,7 @@ function switchTab(tabKey) {
   });
   tabFillEl.classList.toggle("active", tabKey === "fill");
   tabResumeEl.classList.toggle("active", tabKey === "resume");
+  document.getElementById("tab-library").classList.toggle("active", tabKey === "library");
 }
 
 function initModalEvents() {
@@ -360,14 +484,137 @@ function createFillSession(tab, actionKey = "", actionConfig = {}) {
 
 function beginFillSession(tab, actionKey, actionConfig) {
   activeFillSession = createFillSession(tab, actionKey, actionConfig);
+  sessionDecisions.clear();
+  renderMappingDecisions();
 }
 
-function recordSessionLog(level, message, timestamp) {
+function recordSessionLog(level, message, timestamp, event = null) {
   if (!activeFillSession) return;
   activeFillSession.logs.push({
     level,
     message,
     timestamp,
+    ...(event ? { event } : {}),
+  });
+}
+
+function captureMappingDecision(event) {
+  if (!event || event.type !== "decision" || !mappingDecisionsEl) return;
+  const key = String(event.fieldId || event.label || sessionDecisions.size);
+  sessionDecisions.set(key, event);
+  renderMappingDecisions();
+}
+
+function decisionStatusText(status) {
+  const labels = {
+    mapped: "已映射",
+    filled: "已填写",
+    preserved: "已保留",
+    ambiguous: "待确认",
+    source_missing: "简历无对应值",
+    failed: "写入未验证",
+    canceled: "已取消",
+  };
+  return labels[status] || status || "待确认";
+}
+
+function renderMappingDecisions() {
+  if (!mappingDecisionsEl) return;
+  mappingDecisionsEl.replaceChildren();
+  if (sessionDecisions.size === 0) {
+    mappingDecisionsEl.hidden = true;
+    return;
+  }
+  mappingDecisionsEl.hidden = false;
+  for (const event of sessionDecisions.values()) {
+    const item = document.createElement("div");
+    item.className = "decision-item";
+    const title = document.createElement("strong");
+    const sourceLabel = event.resumePath
+      ? `${event.resumePath}`
+      : "未确定来源";
+    title.textContent = `${event.label || "未命名字段"} → ${sourceLabel}`;
+    const detail = document.createElement("span");
+    const reason =
+      (typeof ResumeMappingPolicy !== "undefined" && event.rejectionCode
+        ? ResumeMappingPolicy.reasonText(event.rejectionCode)
+        : "") || event.detail || event.reason || "";
+    detail.textContent = `${decisionStatusText(event.status)}${reason ? ` · ${reason}` : ""}`;
+    item.append(title, detail);
+    if (event.conceptId && event.origin && event.templateKey && event.label) {
+      const actions = document.createElement("div");
+      actions.className = "decision-actions";
+      const rememberBtn = document.createElement("button");
+      rememberBtn.type = "button";
+      rememberBtn.className = "btn btn-outline btn-sm";
+      rememberBtn.textContent = "记住此类字段";
+      rememberBtn.addEventListener("click", () => saveConceptMemory(event));
+      actions.append(rememberBtn);
+      item.append(actions);
+    }
+    mappingDecisionsEl.append(item);
+  }
+}
+
+async function loadConceptMemories() {
+  const data = await chrome.storage.local.get([FIELD_CONCEPT_MEMORY_KEY]);
+  return Array.isArray(data[FIELD_CONCEPT_MEMORY_KEY]) ? data[FIELD_CONCEPT_MEMORY_KEY] : [];
+}
+
+async function saveConceptMemory(event) {
+  if (!event?.conceptId || !event.origin || !event.templateKey || !event.label) return;
+  const memories = await loadConceptMemories();
+  const next = {
+    origin: event.origin,
+    templateKey: event.templateKey,
+    label: event.label,
+    optionDomain: event.optionDomain || "",
+    conceptId: event.conceptId,
+    ruleVersion: window.ResumeFieldConcepts?.SEMANTIC_RULE_VERSION || 1,
+    savedAt: Date.now(),
+  };
+  const filtered = memories.filter(
+    (entry) => !window.ResumeMappingPolicy?.memoryMatches(entry, next)
+  );
+  filtered.unshift(next);
+  await chrome.storage.local.set({ [FIELD_CONCEPT_MEMORY_KEY]: filtered.slice(0, 200) });
+  await renderConceptMemories();
+}
+
+async function deleteConceptMemory(index) {
+  const memories = await loadConceptMemories();
+  memories.splice(index, 1);
+  await chrome.storage.local.set({ [FIELD_CONCEPT_MEMORY_KEY]: memories });
+  await renderConceptMemories();
+}
+
+async function renderConceptMemories() {
+  if (!conceptMemoryListEl) return;
+  const memories = await loadConceptMemories();
+  conceptMemoryListEl.replaceChildren();
+  if (memories.length === 0) {
+    const empty = document.createElement("span");
+    empty.textContent = "还没有记住的字段。";
+    conceptMemoryListEl.append(empty);
+    return;
+  }
+  memories.forEach((entry, index) => {
+    const item = document.createElement("div");
+    item.className = "memory-item";
+    const title = document.createElement("strong");
+    title.textContent = `${entry.label || "未命名"} → ${entry.conceptId}`;
+    const detail = document.createElement("span");
+    detail.textContent = `${entry.origin || ""} · 选项域 ${entry.optionDomain || "无"}`;
+    const actions = document.createElement("div");
+    actions.className = "decision-actions";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn btn-outline btn-sm";
+    deleteBtn.textContent = "删除记忆";
+    deleteBtn.addEventListener("click", () => deleteConceptMemory(index));
+    actions.append(deleteBtn);
+    item.append(title, detail, actions);
+    conceptMemoryListEl.append(item);
   });
 }
 
@@ -725,10 +972,13 @@ function renderTemplateSelectors() {
   resumeTemplateSelect.innerHTML = options;
   fillTemplateSelect.value = activeTemplateId;
   resumeTemplateSelect.value = activeTemplateId;
+  libraryTemplateSelect.innerHTML = options;
+  libraryTemplateSelect.value = activeTemplateId;
 }
 
 async function switchActiveTemplate(id) {
   if (!id || id === activeTemplateId) return;
+  await resetLibraryTarget("模板已变化，请重新选择网页区域。");
 
   if (isResumeDirty) {
     await persistResumeProfile({ silent: true });
@@ -897,6 +1147,9 @@ async function loadResumeProfile() {
   try {
     const state = await resumeStorage.loadTemplateState();
     templates = state.templates;
+    if (activeTemplateId && activeTemplateId !== state.activeTemplateId) {
+      await resetLibraryTarget("模板已变化，请重新选择网页区域。");
+    }
     activeTemplateId = state.activeTemplateId;
     renderTemplateSelectors();
 
@@ -916,6 +1169,7 @@ async function loadResumeProfile() {
 }
 
 function renderResumeEditor(profile) {
+  resumeLibrary.render(profile);
   const sectionStats = buildResumeSectionStats(profile);
 
   renderResumeSummary(sectionStats);
@@ -1521,6 +1775,7 @@ startSelectionFillBtn?.addEventListener("click", async () => {
 
 async function runFill(actionKey) {
   if (isFilling) return;
+  await resetLibraryTarget();
 
   const actionConfig = FILL_ACTIONS[actionKey];
   if (!actionConfig) {
@@ -1538,12 +1793,6 @@ async function runFill(actionKey) {
   }
 
   const activeModel = await getActiveModel();
-  if (!isModelConfigured(activeModel)) {
-    addLog("error", "请先在设置中配置模型");
-    openModal();
-    return;
-  }
-
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   const tab = tabs[0];
   if (!tab) {
@@ -1564,7 +1813,10 @@ async function runFill(actionKey) {
   }
 
   isFilling = true;
+  activeFillTabId = tab.id;
+  stopFillRequested = false;
   updateFillActionButtons({ isRunning: true, runningActionKey: actionKey });
+  updateLibraryAvailability();
   fillTipEl.hidden = true;
   updateStatus("running", actionConfig.statusText);
   beginFillSession(tab, actionKey, actionConfig);
@@ -1580,8 +1832,13 @@ async function runFill(actionKey) {
       throw new Error("当前页面仍在运行旧版插件脚本。这通常发生在刚重载扩展后；刷新当前页面一次后再重试即可");
     }
 
-    const modelId = activeModel.id;
+    const modelId = isModelConfigured(activeModel) ? activeModel.id : "";
     const resumeAssets = await assetStorage.getSerializableAssets();
+    if (stopFillRequested) {
+      updateStatus("ready", "已取消");
+      await finalizeFillSession({ status: "canceled", stats: getCurrentFillStats() });
+      return;
+    }
     const response = await sendTabMessage(tab.id, {
       action: "startFill",
       modelId,
@@ -1650,9 +1907,28 @@ async function runFill(actionKey) {
     });
   } finally {
     isFilling = false;
+    activeFillTabId = null;
+    stopFillRequested = false;
     updateStartFillAvailability();
   }
 }
+
+stopFillBtn.addEventListener("click", async () => {
+  if (!isFilling || activeFillTabId === null || stopFillRequested) return;
+  stopFillRequested = true;
+  stopFillBtn.disabled = true;
+  stopFillBtn.textContent = "正在停止…";
+  try {
+    const response = await sendTabMessage(activeFillTabId, { action: "cancelFill" }, 5000);
+    if (!response?.success) throw new Error("网页未确认停止请求");
+    addLog("info", "已请求停止，等待当前控件操作结束；已填写内容会保留。");
+  } catch (error) {
+    addLog("warning", `${error.message}。可先从“选填与复制”复制资料；若网页仍无响应，需要刷新网页，刷新会丢失未保存内容。`);
+    stopFillRequested = false;
+    stopFillBtn.disabled = false;
+    stopFillBtn.textContent = "重试停止";
+  }
+});
 
 function fillResponseMatchesRequest(response, actionKey, actionConfig) {
   const execution = response?.execution;
@@ -1679,6 +1955,7 @@ function updateFillStats(fieldCount, mappedCount, filledCount) {
 }
 
 function updateStartFillAvailability() {
+  updateLibraryAvailability();
   const hasData = schema.hasAnyFilledField(resumeProfile);
   updateFillActionButtons({ hasData, isRunning: isFilling });
 }
@@ -1688,6 +1965,9 @@ function updateFillActionButtons({
   isRunning = isFilling,
   runningActionKey = "",
 } = {}) {
+  stopFillBtn.hidden = !isRunning || activeFillTabId === null;
+  stopFillBtn.disabled = stopFillRequested;
+  stopFillBtn.textContent = stopFillRequested ? "正在停止…" : "停止填充";
   const buttonMap = [
     {
       key: "overwritePage",
@@ -1784,7 +2064,12 @@ async function injectContentScript(tabId) {
         "shared/resume-schema.js",
         "shared/diagnostics.js",
         "shared/field-text.js",
+        "shared/field-concepts.js",
+        "shared/mapping-policy.js",
         "shared/field-semantics.js",
+        "shared/page-structure.js",
+        "shared/repeat-alignment.js",
+        "shared/repeat-flow.js",
         "shared/fill-runtime.js",
         "shared/site-adapters.js",
         "shared/content-bridge.js",
@@ -1802,16 +2087,23 @@ async function injectContentScript(tabId) {
   }
 }
 
-function sendTabMessage(tabId, message) {
+function sendTabMessage(tabId, message, timeoutMs = 0) {
   return new Promise((resolve, reject) => {
-    chrome.tabs.sendMessage(tabId, message, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
+    const timer = timeoutMs > 0 ? setTimeout(() => reject(new Error("网页响应超时")), timeoutMs) : null;
+    try {
+      chrome.tabs.sendMessage(tabId, message, (response) => {
+        clearTimeout(timer);
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
 
-      resolve(response);
-    });
+        resolve(response);
+      });
+    } catch (error) {
+      clearTimeout(timer);
+      reject(error);
+    }
   });
 }
 
@@ -1966,7 +2258,7 @@ function updateStatus(type, text) {
   statusText.textContent = text;
 }
 
-function addLog(type, message) {
+function addLog(type, message, event = null) {
   const now = new Date();
   const time = now.toLocaleTimeString("zh-CN", {
     hour12: false,
@@ -1974,7 +2266,8 @@ function addLog(type, message) {
     minute: "2-digit",
   });
 
-  recordSessionLog(type, message, now.toISOString());
+  recordSessionLog(type, message, now.toISOString(), event);
+  captureMappingDecision(event);
 
   if (!logVisibility.shouldRenderLogInUi(type, message)) {
     return;
@@ -2007,7 +2300,7 @@ clearLogBtn.addEventListener("click", () => {
 chrome.runtime.onMessage.addListener((message) => {
   switch (message.type) {
     case "log":
-      addLog(message.level || "info", message.text || "");
+      addLog(message.level || "info", message.text || "", message.event);
       break;
     case "updateStats":
       updateFillStats(

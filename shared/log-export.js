@@ -83,12 +83,72 @@
       return `${timestamp}_${host}_${title}-${status}.json`;
     }
 
+    function sanitizeDiagnosticEvent(event) {
+      if (!event || typeof event !== "object") return null;
+
+      if (event.type === "field") {
+        return {
+          type: "field",
+          fieldId: compactText(event.fieldId),
+          ...(compactText(event.kind) ? { kind: compactText(event.kind) } : {}),
+          ...(compactText(event.label) ? { label: compactText(event.label) } : {}),
+          section: {
+            key: compactText(event.section?.key),
+            ...(compactText(event.section?.label)
+              ? { label: compactText(event.section.label) }
+              : {}),
+            ...(compactText(event.section?.evidence)
+              ? { evidence: compactText(event.section.evidence) }
+              : {}),
+            locked: Boolean(event.section?.locked),
+            itemIndex: Number.isInteger(event.section?.itemIndex)
+              ? event.section.itemIndex
+              : null,
+          },
+        };
+      }
+
+      if (event.type === "decision") {
+        return {
+          type: "decision",
+          fieldId: compactText(event.fieldId),
+          label: compactText(event.label),
+          sectionKey: compactText(event.sectionKey),
+          sectionItemIndex: Number.isInteger(event.sectionItemIndex)
+            ? event.sectionItemIndex
+            : null,
+          source: compactText(event.source),
+          status: compactText(event.status),
+          resumePath: compactText(event.resumePath),
+          reason: compactText(event.reason),
+          conflict: compactText(event.conflict),
+          detail: compactText(event.detail),
+        };
+      }
+
+      if (event.type === "record_flow") {
+        return {
+          type: "record_flow",
+          sectionKey: compactText(event.sectionKey),
+          sourceIndex: Number.isInteger(event.sourceIndex) ? event.sourceIndex : null,
+          status: compactText(event.status),
+          reason: compactText(event.reason),
+          detail: compactText(event.detail),
+        };
+      }
+
+      return null;
+    }
+
     function createLogExportPayload(session) {
       const safeLogs = Array.isArray(session?.logs)
         ? session.logs.map((entry) => ({
             level: compactText(entry?.level) || "info",
             message: compactText(entry?.message),
             timestamp: entry?.timestamp || null,
+            ...(sanitizeDiagnosticEvent(entry?.event)
+              ? { event: sanitizeDiagnosticEvent(entry.event) }
+              : {}),
           }))
         : [];
 

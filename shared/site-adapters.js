@@ -81,6 +81,12 @@
       triggerTexts: ["新增校园经历", "添加校园经历", "Add activity", "Add campus experience"],
       rowLabels: ["组织名称", "社团名称", "Organization"],
     },
+    {
+      sectionKey: "familyMembers",
+      sectionTexts: ["亲属信息", "家庭成员", "家属信息", "Family members"],
+      triggerTexts: ["新增亲属", "添加亲属", "新增家庭成员", "添加家庭成员", "Add family member", "Add relative"],
+      rowLabels: ["亲属姓名", "成员姓名", "Relative name", "Family member name"],
+    },
   ];
 
   const DEFAULT_OPTION_SELECTORS = [
@@ -124,6 +130,7 @@
     publications: ["论文"],
     languages: ["语言能力"],
     campusExperiences: ["校园经历"],
+    familyMembers: ["亲属信息", "家庭成员"],
   };
 
   const MIDEA_EXTRA_TRIGGER_TEXTS = {

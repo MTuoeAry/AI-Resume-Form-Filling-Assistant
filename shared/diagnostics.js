@@ -111,7 +111,55 @@
       return isSensitiveField(field, mapping) ? '"[redacted]"' : summarizeValue(value);
     }
 
+    function normalizeItemIndex(value) {
+      return Number.isInteger(value) && value >= 0 ? value : null;
+    }
+
+    function createFieldEvent(field) {
+      return {
+        type: "field",
+        fieldId: compactText(field?.fieldId),
+        kind: compactText(field?.kind) || "unknown",
+        label: compactText(field?.label),
+        section: {
+          key: compactText(field?.sectionKey),
+          label: compactText(field?.sectionLabel),
+          evidence: compactText(field?.sectionEvidence),
+          locked: Boolean(field?.sectionLocked),
+          itemIndex: normalizeItemIndex(field?.sectionItemIndex),
+        },
+      };
+    }
+
+    function createDecisionEvent({
+      field,
+      mapping,
+      source = "unknown",
+      status = "unknown",
+      detail = "",
+    } = {}) {
+      return {
+        type: "decision",
+        fieldId: compactText(field?.fieldId),
+        label: compactText(field?.label),
+        sectionKey: compactText(field?.sectionKey),
+        sectionItemIndex: normalizeItemIndex(field?.sectionItemIndex),
+        source: compactText(source) || "unknown",
+        status: compactText(status) || "unknown",
+        resumePath: compactText(mapping?.resumePath),
+        reason: compactText(mapping?.reason),
+        conflict: compactText(mapping?.conflict),
+        detail: compactText(detail),
+        conceptId: compactText(mapping?.conceptId || field?.rememberedConceptId),
+        rejectionCode: compactText(mapping?.rejectionCode),
+        origin: compactText(field?.pageOrigin),
+        templateKey: compactText(field?.formTemplateKey),
+        optionDomain: compactText(field?.optionDomain),
+      };
+    }
+
     function formatFieldSummary(field) {
+      const event = createFieldEvent(field);
       return [
         "[扫描]",
         compactText(field?.fieldId) || "(no-field-id)",
@@ -121,6 +169,12 @@
         `id=${summarizeValue(field?.id)}`,
         `placeholder=${summarizeValue(field?.placeholder)}`,
         `section=${summarizeValue(field?.sectionLabel)}`,
+        `sectionKey=${summarizeValue(event.section.key)}`,
+        `sectionEvidence=${summarizeValue(event.section.evidence)}`,
+        `sectionLocked=${event.section.locked}`,
+        `sectionItemIndex=${
+          event.section.itemIndex === null ? "(none)" : event.section.itemIndex
+        }`,
         `nearby=${summarizeOptions(field?.nearbyLabels)}`,
         `options=${summarizeOptions(field?.options)}`,
         `context=${summarizeValue(field?.context, { maxLength: 120 })}`,
@@ -182,7 +236,27 @@
       ].join(" ");
     }
 
+    function createRecordFlowEvent({
+      sectionKey,
+      sourceIndex = null,
+      status = "unknown",
+      reason = "",
+      detail = "",
+    } = {}) {
+      return {
+        type: "record_flow",
+        sectionKey: compactText(sectionKey),
+        sourceIndex: normalizeItemIndex(sourceIndex),
+        status: compactText(status) || "unknown",
+        reason: compactText(reason),
+        detail: compactText(detail),
+      };
+    }
+
     return {
+      createFieldEvent,
+      createDecisionEvent,
+      createRecordFlowEvent,
       formatFieldSummary,
       formatMappingSummary,
       formatValueSummary,

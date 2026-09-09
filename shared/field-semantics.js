@@ -18,6 +18,7 @@
         keywords: [
           "基本信息", "个人信息", "联系方式", "姓名", "邮箱", "手机", "电话", "证件",
           "personal information", "contact information", "email address", "phone number",
+          "自我评价", "self evaluation", "self-evaluation",
         ],
       },
       {
@@ -162,6 +163,19 @@
         keywords: ["语言能力", "语言", "外语", "雅思", "托福", "cet", "四六级", "languages", "language proficiency"],
       },
       {
+        key: "family",
+        label: "亲属信息",
+        keywords: [
+          "亲属信息",
+          "家庭成员",
+          "家属信息",
+          "亲属姓名",
+          "family members",
+          "family member",
+          "relative name",
+        ],
+      },
+      {
         key: "award",
         label: "获奖经历",
         keywords: [
@@ -232,6 +246,15 @@
       },
     ];
 
+    const fieldConcepts =
+      (typeof require === "function" ? require("./field-concepts") : null) ||
+      (typeof globalThis !== "undefined" ? globalThis.ResumeFieldConcepts : null) ||
+      null;
+    const mappingPolicy =
+      (typeof require === "function" ? require("./mapping-policy") : null) ||
+      (typeof globalThis !== "undefined" ? globalThis.ResumeMappingPolicy : null) ||
+      null;
+
     const SECTION_SCHEMA_KEYS = Object.freeze({
       personal: "personal",
       jobPreference: "jobPreferences",
@@ -243,6 +266,7 @@
       campus: "campusExperiences",
       certificate: "certificates",
       language: "languages",
+      family: "familyMembers",
       award: "awards",
       patent: "patents",
       publication: "publications",
@@ -280,6 +304,7 @@
         { fieldKey: "yearsOfManagement", patterns: ["管理经验年限", "管理年限", "years of management", "yearsofmanagement"] },
         { fieldKey: "yearsOfExperience", patterns: ["工作年限", "工作经验年限", "years of experience", "work years"] },
         { fieldKey: "summary", patterns: ["个人简介", "个人概述", "自我介绍", "personal summary", "profile summary"] },
+        { fieldKey: "selfEvaluation", patterns: ["自我评价", "自我评述", "self evaluation", "self-evaluation", "selfevaluation", "self assessment"] },
       ],
       jobPreference: [
         { fieldKey: "targetIndustry", patterns: ["期望从事行业", "期望行业", "目标行业", "desired industry", "target industry"] },
@@ -315,7 +340,7 @@
         { fieldKey: "interests", patterns: ["兴趣爱好", "个人爱好", "interests", "hobbies"] },
       ],
       education: [
-        { fieldKey: "school", patterns: ["学校名称", "毕业院校", "学校", "school name", "university", "institution"] },
+        { fieldKey: "school", patterns: ["学校名称", "毕业院校", "学校", "school name", "school", "university", "institution"] },
         { fieldKey: "educationType", patterns: ["学历类型", "学历性质", "教育类型", "education type", "educationtype", "educationcategory", "educationnature"] },
         { fieldKey: "studyMode", patterns: ["培养方式", "学习形式", "学习方式", "learning modality", "learningmodality", "learningmode", "study mode", "studymode"] },
         { fieldKey: "startDate", patterns: ["开始时间", "入学时间", "开始日期", "start date", "startdate"] },
@@ -326,7 +351,11 @@
         { fieldKey: "ranking", patterns: ["专业排名", "班级排名", "major rank", "majorrank", "ranking", "rank"] },
         { fieldKey: "minor", patterns: ["第二专业", "辅修专业", "辅修", "second major", "minor"] },
         { fieldKey: "major", patterns: ["专业名称", "所学专业", "专业", "major", "field of study"] },
-        { fieldKey: "degree", patterns: ["学历", "学位", "degree", "education level"] },
+        { fieldKey: "degree", patterns: ["学历", "学历层次", "education level", "educationlevel"] },
+        { fieldKey: "academicDegree", patterns: ["学位", "academic degree", "academicdegree", "degree"] },
+        { fieldKey: "isFullTime", patterns: ["是否全日制", "isfulltime", "full time study", "fulltimestudy"] },
+        { fieldKey: "schoolType", patterns: ["院校性质", "学校性质", "school type", "schooltype", "schoolproperty"] },
+        { fieldKey: "majorDescription", patterns: ["专业描述", "major description", "majordescription"] },
         { fieldKey: "faculty", patterns: ["院系", "学院", "faculty", "department"] },
         { fieldKey: "gpa", patterns: ["gpa", "绩点"] },
         { fieldKey: "className", patterns: ["班级名称", "所在班级", "班级", "class name", "classname"] },
@@ -335,7 +364,7 @@
         { fieldKey: "researchDirection", patterns: ["研究方向", "领域方向", "research direction", "researchdirection"] },
         { fieldKey: "advisor", patterns: ["导师姓名", "导师", "tutor", "mentor", "advisor", "supervisor"] },
         { fieldKey: "thesisTitle", patterns: ["毕业论文题目", "学位论文题目", "论文题目", "thesis title", "thesistitle"] },
-        { fieldKey: "courses", patterns: ["核心课程", "主修课程", "主要课程", "courses", "coursework"] },
+        { fieldKey: "courses", patterns: ["核心课程", "主修课程", "主要课程", "专业课程", "courses", "coursework"] },
         { fieldKey: "makeupRetakeCourseCount", patterns: ["补考及重修", "补考门数", "重修门数", "retake course", "failed course"] },
         { fieldKey: "hasDualDegree", patterns: ["是否双学位", "双学位", "dual degree", "dualdegree"] },
         { fieldKey: "isUpgradedFromJuniorCollege", patterns: ["是否专升本", "专升本", "junior college upgrade", "topupdegree"] },
@@ -377,7 +406,7 @@
         { fieldKey: "name", patterns: ["项目名称", "project name", "project title"] },
         { fieldKey: "startDate", patterns: ["开始时间", "开始日期", "start date", "startdate"] },
         { fieldKey: "endDate", patterns: ["结束时间", "结束日期", "end date", "enddate"] },
-        { fieldKey: "role", patterns: ["项目职责", "项目角色", "本人职责", "本人角色", "project responsibilities", "project responsibility", "project role", "projectrole", "project duty", "projectduty"] },
+        { fieldKey: "role", patterns: ["项目职责", "项目角色", "本人职责", "本人角色", "responsibilities", "responsibility", "project responsibilities", "project responsibility", "project role", "projectrole", "project duty", "projectduty"] },
         { fieldKey: "description", patterns: ["项目描述", "项目说明", "project description", "projectdescription"] },
         { fieldKey: "highlights", patterns: ["项目成果", "项目亮点", "project outcomes", "project achievements", "project highlights"] },
         { fieldKey: "organization", patterns: ["所属组织", "项目单位", "项目组织", "organization"] },
@@ -404,6 +433,30 @@
         { fieldKey: "score", patterns: ["证书成绩", "考试成绩", "分数", "等级", "score", "grade"] },
         { fieldKey: "credentialId", patterns: ["证书编号", "认证编号", "credential id", "certificate number"] },
         { fieldKey: "credentialUrl", patterns: ["证书链接", "认证链接", "credential url", "certificate url"] },
+      ],
+      family: [
+        { fieldKey: "name", patterns: ["亲属姓名", "成员姓名", "家属姓名", "姓名", "relative name", "family member name"] },
+        { fieldKey: "relationship", patterns: ["与本人关系", "与申请人关系", "亲属关系", "relationship to self", "relationship"] },
+        { fieldKey: "birthDate", patterns: ["出生日期", "出生年月", "生日", "date of birth", "birth date", "birthdate"] },
+        { fieldKey: "gender", patterns: ["性别", "gender", "sex"] },
+        {
+          fieldKey: "employedAtTargetOrg",
+          patterns: [
+            "是否在应聘单位任职",
+            "是否在本系统任职",
+            "是否在本公司任职",
+            "是否在本单位任职",
+            "系统内任职",
+            "移动系统内任职",
+            "employed at target organization",
+            "employed in the system",
+          ],
+        },
+        { fieldKey: "employer", patterns: ["亲属工作单位", "工作单位", "所在单位", "relative employer", "work unit"] },
+        { fieldKey: "title", patterns: ["亲属职位", "亲属职务", "职位", "职务", "relative title", "relative position"] },
+        { fieldKey: "phone", patterns: ["联系电话", "亲属电话", "家属电话", "contact phone", "relative phone"] },
+        { fieldKey: "politicalStatus", patterns: ["政治面貌", "political status", "political affiliation"] },
+        { fieldKey: "currentAddress", patterns: ["现居住地址", "现住址", "居住地址", "current residential address", "current address"] },
       ],
       award: [
         { fieldKey: "date", patterns: ["获奖时间", "获奖日期", "竞赛时间", "award date", "award time", "awarddate", "awardtime", "date awarded"] },
@@ -434,16 +487,23 @@
         { fieldKey: "details", patterns: ["论文详情", "论文摘要", "publication details", "paper details", "abstract"] },
       ],
       language: [
-        { fieldKey: "name", patterns: ["语言类型", "语言名称", "外语类型", "语种", "语言", "language type", "language"] },
+        { fieldKey: "name", patterns: ["外语能力类型", "外语种类", "语言类型", "语言名称", "外语类型", "语种", "language type", "language name"] },
         { fieldKey: "proficiency", patterns: ["掌握程度", "熟练程度", "听说", "读写", "language proficiency", "proficiency", "speaking", "reading", "writing"] },
+        { fieldKey: "examType", patterns: ["英语考试类型", "外语证书类型", "语言考试名称", "考试类型"] },
+        { fieldKey: "examLevel", patterns: ["考试等级", "证书等级", "cet等级"] },
+        { fieldKey: "scoreValue", patterns: ["考试得分", "语言考试分数", "外语成绩"] },
+        { fieldKey: "scoreScale", patterns: ["成绩分制"] },
+        { fieldKey: "cefrLevel", patterns: ["cefr", "欧洲语言等级", "cefr等级"] },
         { fieldKey: "testScore", patterns: ["语言成绩", "考试成绩", "证书成绩", "language score", "test score"] },
       ],
     });
 
     const DIRECT_GROUP_PATH_RULES = Object.freeze([
-      { path: "contactAndLocation.emergencyContactName", sections: ["personal", ""], patterns: ["紧急联系人姓名", "应急联系人姓名", "emergency contact name"] },
-      { path: "contactAndLocation.emergencyContactRelationship", sections: ["personal", ""], patterns: ["紧急联系人关系", "与紧急联系人关系", "emergency contact relationship"] },
-      { path: "contactAndLocation.emergencyContactPhone", sections: ["personal", ""], patterns: ["紧急联系人电话", "紧急联系人手机", "应急联系人电话", "emergency contact phone"] },
+      { path: "personal.selfEvaluation", sections: ["personal", ""], patterns: ["自我评价", "自我评述", "self evaluation", "self-evaluation", "selfevaluation"] },
+      { path: "contactAndLocation.emergencyContactName", sections: ["personal", "", "family"], patterns: ["紧急联系人姓名", "应急联系人姓名", "emergency contact name"] },
+      { path: "contactAndLocation.emergencyContactRelationship", sections: ["personal", "", "family"], patterns: ["紧急联系人关系", "与紧急联系人关系", "emergency contact relationship"] },
+      { path: "contactAndLocation.emergencyContactRelationship", sections: ["personal"], patterns: ["与本人关系"] },
+      { path: "contactAndLocation.emergencyContactPhone", sections: ["personal", "", "family"], patterns: ["紧急联系人电话", "紧急联系人手机", "应急联系人电话", "emergency contact phone"] },
       { path: "contactAndLocation.currentAddressLine1", sections: ["personal", ""], patterns: ["现居地址1", "现居住址1", "当前地址1", "current address line 1"] },
       { path: "contactAndLocation.currentAddressLine2", sections: ["personal", ""], patterns: ["现居地址2", "现居住址2", "当前地址2", "current address line 2"] },
       { path: "contactAndLocation.postalCode", sections: ["personal", ""], patterns: ["邮政编码", "邮编", "postal code", "zipcode", "zip code"] },
@@ -522,6 +582,7 @@
         evidence: "",
         score: 0,
       };
+      let secondScore = 0;
 
       for (const rule of SECTION_RULES) {
         let score = 0;
@@ -554,16 +615,19 @@
         }
 
         if (score > best.score) {
+          secondScore = best.score;
           best = {
             key: rule.key,
             label: rule.label,
             evidence: Array.from(new Set(matched)).slice(0, 3).join(" / "),
             score,
           };
+        } else if (score > secondScore) {
+          secondScore = score;
         }
       }
 
-      if (best.score < 4) {
+      if (best.score < 4 || (secondScore > 0 && best.score - secondScore <= 4)) {
         return {
           key: "",
           label: "",
@@ -580,8 +644,12 @@
     }
 
     function inferStructuredFieldKey(sectionKey, label, compositeRole = "") {
-      if (sectionKey === "project" && compositeRole === "start") return "startDate";
-      if (sectionKey === "project" && compositeRole === "end") return "endDate";
+      if (STRUCTURED_FIELD_RULES[sectionKey]?.some(rule => rule.fieldKey === "startDate")) {
+        if (compositeRole === "start") return "startDate";
+        if (compositeRole === "end") return "endDate";
+      }
+
+      if (sectionKey === "education" && /是否.*最高|是否.*主学习|is\s*(?:hig[he]*st|highest|mainstudy)/i.test(String(label))) return "";
 
       const normalizedLabel = normalizeSemanticText(label);
       if (!normalizedLabel) return "";
@@ -644,8 +712,44 @@
 
     function inferStructuredFieldKeyFromField(field, sectionKeyOverride = "") {
       const sectionKey = String(sectionKeyOverride || field?.sectionKey || "").trim();
+      if (getUnsupportedMappingReason(field)) return "";
+      const concept = fieldConcepts?.inferConcept?.(field);
+      if (
+        concept?.status === "resolved" &&
+        concept.fieldKey &&
+        (concept.schemaKey === getSchemaSectionKey(sectionKey) || concept.schemaKey === sectionKey)
+      ) {
+        return concept.fieldKey;
+      }
       const constrainedKey = inferControlConstrainedFieldKey(field, sectionKey);
       if (constrainedKey) return constrainedKey;
+
+      // A precise row label outranks implementation identifiers and neighboring fields.
+      const primaryLabel = field?.baseLabel || field?.label || "";
+      if (primaryLabel) {
+        const primaryKey = inferStructuredFieldKey(sectionKey, primaryLabel, field?.compositeRole || "");
+        if (primaryKey) return primaryKey;
+      }
+
+      const genericContent = /^(内容|评价内容|content)$/.test(normalizeSemanticText(primaryLabel));
+      if (genericContent) {
+        const evidence = normalizeSemanticText(
+          [
+            field?.sectionEvidence,
+            field?.sectionLabel,
+            field?.context,
+            ...(Array.isArray(field?.nearbyLabels) ? field.nearbyLabels.slice(0, 2) : []),
+          ]
+            .filter(Boolean)
+            .join(" ")
+        );
+        if (
+          (sectionKey === "personal" || !sectionKey) &&
+          /(自我评价|自我评述|selfevaluation|selfassessment)/.test(evidence)
+        ) {
+          return "selfEvaluation";
+        }
+      }
 
       const directText = [
         field?.label,
@@ -664,7 +768,7 @@
       if (directMatch) return directMatch;
 
       for (const nearbyLabel of Array.isArray(field?.nearbyLabels)
-        ? field.nearbyLabels
+        ? field.nearbyLabels.slice(0, 1)
         : []) {
         const nearbyMatch = inferStructuredFieldKey(
           sectionKey,
@@ -740,6 +844,8 @@
         (optionSet.has("女") || optionSet.has("female"));
 
       if (hasExplicitGenderLabel || hasGenderOptionPair) {
+        const schemaSectionKey = getSchemaSectionKey(field?.sectionKey);
+        if (schemaSectionKey && schemaSectionKey !== "personal") return "";
         return "personal.gender";
       }
       return "";
@@ -760,6 +866,11 @@
       const choiceLike = ["select", "radio_group", "checkbox_group", "custom_picker"].includes(
         String(field?.kind || "")
       );
+
+      if (field?.sectionKey === "education" &&
+          /是否.*最高|是否.*主学习|is(?:hig[he]*st|highest|mainstudy)/i.test(directEvidence)) {
+        return "该教育条目的最高/主学习状态尚无经过确认的独立来源，已跳过";
+      }
 
       if (
         choiceLike &&
@@ -784,6 +895,17 @@
       const path = String(resumePath || "").trim();
       if (!path) return true;
       if (getUnsupportedMappingReason(field)) return false;
+
+      const policy = mappingPolicy?.evaluateRequestedPath?.(field, path);
+      if (policy && policy.ok === false) return false;
+
+      const lockedSection = getSchemaSectionKey(field?.sectionKey);
+      if (field?.sectionLocked && lockedSection && !GROUP_SCHEMA_KEYS.has(lockedSection)) {
+        const match = path.match(/^([A-Za-z]+)\.(\d+)\./);
+        if (!match || match[1] !== lockedSection) return false;
+        if (Number.isInteger(field.sectionItemIndex) && field.sectionItemIndex >= 0 &&
+            Number(match[2]) !== field.sectionItemIndex) return false;
+      }
 
       const constrainedPath = inferConstrainedResumePath(field);
       if (constrainedPath && path !== constrainedPath) return false;
@@ -840,7 +962,20 @@
         field,
         field?.projectedFromSectionKey || sectionKey
       );
-      if (!schemaSectionKey || !fieldKey) return true;
+      const options = (field?.options || []).map(normalizeSemanticText);
+      const booleanOptions = options.length > 0 && options.every(option => /^(是|否|yes|no|true|false|y|n|0|1)$/.test(option));
+      if (booleanOptions && schemaSectionKey && !GROUP_SCHEMA_KEYS.has(schemaSectionKey) &&
+          !/^(is[A-Z]|has[A-Z]|employed[A-Z])/.test(fieldKey || "")) return false;
+      if (!schemaSectionKey || !fieldKey) {
+        const concept = fieldConcepts?.inferConcept?.(field);
+        if (concept?.status === "resolved") {
+          return fieldConcepts.pathMatchesConcept(path, concept);
+        }
+        if (fieldConcepts?.hasLanguageDomainEvidence?.(field) && /^skills\./.test(path)) {
+          return false;
+        }
+        return true;
+      }
 
       if (GROUP_SCHEMA_KEYS.has(schemaSectionKey)) {
         return path === `${schemaSectionKey}.${fieldKey}`;
@@ -849,6 +984,54 @@
     }
 
     function resolvePreferredResumePath(field, requestedResumePath, validPaths) {
+      const concept = fieldConcepts?.inferConcept?.(field);
+      if (concept?.status === "ambiguous") return "";
+      if (concept?.status === "resolved" && concept.schemaKey && concept.fieldKey) {
+        if (concept.group) {
+          const preferredPath = `${concept.schemaKey}.${concept.fieldKey}`;
+          if (
+            validPaths &&
+            typeof validPaths.has === "function" &&
+            !validPaths.has(preferredPath)
+          ) {
+            return "";
+          }
+          return preferredPath;
+        }
+        let conceptIndex = Number(field?.sectionItemIndex);
+        if (!Number.isInteger(conceptIndex) || conceptIndex < 0) {
+          const requestedMatch = String(requestedResumePath || "").match(/^[A-Za-z]+\.(\d+)\./);
+          if (
+            requestedMatch &&
+            fieldConcepts.pathMatchesConcept(requestedResumePath, concept)
+          ) {
+            conceptIndex = Number(requestedMatch[1]);
+          }
+        }
+        if (!Number.isInteger(conceptIndex) || conceptIndex < 0) {
+          const uniqueCandidates = validPaths && typeof validPaths[Symbol.iterator] === "function"
+            ? Array.from(validPaths).filter((path) =>
+                String(path).startsWith(`${concept.schemaKey}.`) &&
+                String(path).endsWith(`.${concept.fieldKey}`)
+              )
+            : [];
+          return uniqueCandidates.length === 1 ? uniqueCandidates[0] : "";
+        }
+        const preferredConceptPath = `${concept.schemaKey}.${conceptIndex}.${concept.fieldKey}`;
+        if (
+          validPaths &&
+          typeof validPaths.has === "function" &&
+          !validPaths.has(preferredConceptPath)
+        ) {
+          const uniqueCandidates = Array.from(validPaths).filter((path) =>
+            String(path).startsWith(`${concept.schemaKey}.`) &&
+            String(path).endsWith(`.${concept.fieldKey}`)
+          );
+          return uniqueCandidates.length === 1 ? uniqueCandidates[0] : "";
+        }
+        return preferredConceptPath;
+      }
+
       const sectionKey = String(field?.sectionKey || "").trim();
       const schemaSectionKey = getSchemaSectionKey(sectionKey);
       const directFieldText = [
@@ -1000,6 +1183,7 @@
       inferSectionFromTexts,
       normalizeSemanticText,
       getSchemaSectionKey,
+      inferConcept: (field) => fieldConcepts?.inferConcept?.(field) || null,
       inferStructuredFieldKey,
       inferStructuredFieldKeyFromField,
       inferConstrainedResumePath,

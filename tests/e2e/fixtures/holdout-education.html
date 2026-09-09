@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Holdout sequential education</title>
+  </head>
+  <body>
+    <main>
+      <fieldset aria-label="Education history">
+        <div id="edu-editor">
+          <label>School <input id="school"></label>
+          <label>Start <input id="start"></label>
+          <button type="button" id="save-edu">Done</button>
+        </div>
+        <div id="edu-cards"></div>
+        <button type="button" id="add-edu" disabled>Add another education</button>
+        <button type="submit" id="submit-app">Submit application</button>
+      </fieldset>
+    </main>
+    <script>
+      window.__saveClicks = 0;
+      window.__addClicks = 0;
+      window.__submitClicks = 0;
+      const school = document.getElementById("school");
+      const start = document.getElementById("start");
+      const save = document.getElementById("save-edu");
+      const add = document.getElementById("add-edu");
+      const editor = document.getElementById("edu-editor");
+      const cards = document.getElementById("edu-cards");
+      save.addEventListener("click", () => {
+        if (!String(school.value || "").trim()) return;
+        window.__saveClicks += 1;
+        const card = document.createElement("article");
+        card.className = "saved-card";
+        card.innerHTML = "<strong>" + school.value + "</strong><span>" + (start.value || "") + "</span>";
+        cards.append(card);
+        school.value = "";
+        start.value = "";
+        editor.hidden = true;
+        add.disabled = false;
+      });
+      add.addEventListener("click", () => {
+        window.__addClicks += 1;
+        editor.hidden = false;
+        add.disabled = true;
+      });
+      document.getElementById("submit-app").addEventListener("click", () => {
+        window.__submitClicks += 1;
+      });
+    </script>
+  </body>
+</html>

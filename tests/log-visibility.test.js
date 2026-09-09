@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const visibility = require("../shared/log-visibility.js");
 
@@ -35,4 +37,21 @@ test("keeps key process logs and failures visible in the side panel", () => {
     true
   );
   assert.equal(visibility.shouldRenderLogInUi("error", "填充失败：AI 调用失败"), true);
+});
+
+test("popup preserves machine-readable diagnostic events in session logs", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "../popup.js"),
+    "utf8"
+  );
+
+  assert.match(
+    source,
+    /function recordSessionLog\(level, message, timestamp, event = null\)/
+  );
+  assert.match(source, /\.\.\.\(event \? \{ event \} : \{\}\)/);
+  assert.match(
+    source,
+    /addLog\(message\.level \|\| "info", message\.text \|\| "", message\.event\)/
+  );
 });

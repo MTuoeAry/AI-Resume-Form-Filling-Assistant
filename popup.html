@@ -45,9 +45,30 @@
 
       <main class="app-content">
         <div class="tabs" id="tabs">
+          <button class="tab" data-tab="library">选填与复制</button>
           <button class="tab active" data-tab="fill">自动填充</button>
           <button class="tab" data-tab="resume">标准简历</button>
         </div>
+
+        <button class="btn btn-outline btn-lg" id="stopFillBtn" hidden>停止填充</button>
+
+        <section class="tab-panel" id="tab-library">
+          <div class="library-target">
+            <div class="template-bar">
+              <label for="libraryTemplateSelect">当前简历模板</label>
+              <select id="libraryTemplateSelect" class="template-select"></select>
+            </div>
+            <p class="tip">先在网页打开一条经历的编辑区并框选，再选择下方任意一条资料填入。新增和保存由你操作。</p>
+            <div class="library-actions">
+              <button class="btn btn-primary btn-sm" id="chooseRecordTargetBtn">选择网页区域</button>
+              <button class="btn btn-outline btn-sm" id="clearRecordTargetBtn" disabled>取消选区</button>
+            </div>
+            <p id="recordTargetStatus" class="library-target-status" role="status">尚未选择区域；查看和复制随时可用。</p>
+            <label class="library-overwrite"><input type="checkbox" id="recordOverwrite"> 覆盖选区内已有内容（默认保留）</label>
+          </div>
+          <p id="libraryFeedback" class="library-feedback" role="status" aria-live="polite"></p>
+          <div id="resumeLibrary"></div>
+        </section>
 
         <section class="tab-panel active" id="tab-fill">
           <div class="template-bar">
@@ -98,6 +119,14 @@
               清理映射缓存
             </button>
             <div class="tip" id="fillTip" hidden></div>
+            <div id="mappingDecisions" class="decision-list" hidden></div>
+            <div class="memory-block">
+              <div class="section-header section-header-normal">
+                <span>已记住的字段</span>
+              </div>
+              <p class="tip">只保存字段含义，不保存第几条记录或已填值。删除后立即失效。</p>
+              <div id="conceptMemoryList" class="memory-list"></div>
+            </div>
           </div>
         </section>
 
@@ -377,6 +406,9 @@
     <script src="shared/log-export.js"></script>
     <script src="shared/log-visibility.js"></script>
     <script src="shared/content-bridge.js"></script>
+    <script src="shared/field-concepts.js"></script>
+    <script src="shared/mapping-policy.js"></script>
+    <script src="shared/resume-library.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

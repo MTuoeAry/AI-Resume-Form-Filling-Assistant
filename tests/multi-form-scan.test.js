@@ -2,21 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const vm = require("node:vm");
 
-function loadLowestCommonAncestor() {
-  const source = fs.readFileSync(path.join(__dirname, "../content.js"), "utf8");
-  const start = source.indexOf("function findLowestCommonAncestor(elements) {");
-  const end = source.indexOf("function countControls(root) {", start);
-  if (start < 0 || end <= start) throw new Error("common ancestor helper not found");
-  const context = { module: { exports: {} }, exports: {} };
-  vm.createContext(context);
-  vm.runInContext(
-    `${source.slice(start, end)}\nmodule.exports = findLowestCommonAncestor;`,
-    context
-  );
-  return context.module.exports;
-}
+const pageStructure = require("../shared/page-structure.js");
 
 function createNode(parentElement = null) {
   const node = { parentElement, children: [] };
@@ -27,7 +14,6 @@ function createNode(parentElement = null) {
 }
 
 test("segmented forms scan from their lowest shared container", () => {
-  const findLowestCommonAncestor = loadLowestCommonAncestor();
   const page = createNode();
   const resume = createNode(page);
   const personalForm = createNode(resume);
@@ -35,11 +21,11 @@ test("segmented forms scan from their lowest shared container", () => {
   const unrelatedForm = createNode(page);
 
   assert.equal(
-    findLowestCommonAncestor([personalForm, projectForm]),
+    pageStructure.findLowestCommonAncestor([personalForm, projectForm]),
     resume
   );
   assert.equal(
-    findLowestCommonAncestor([personalForm, unrelatedForm]),
+    pageStructure.findLowestCommonAncestor([personalForm, unrelatedForm]),
     page
   );
 });

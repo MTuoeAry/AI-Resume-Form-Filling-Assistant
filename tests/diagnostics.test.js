@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const diagnostics = require("../shared/diagnostics.js");
+const { loadExtension } = require("./helpers/dom-extension");
 
 test("formatFieldSummary keeps the most useful field metadata readable", () => {
   const summary = diagnostics.formatFieldSummary({
@@ -82,4 +83,92 @@ test("diagnostic values for sensitive fields are redacted", () => {
   assert.match(summary, /raw="\[redacted\]"/);
   assert.match(summary, /final="\[redacted\]"/);
   assert.doesNotMatch(summary, /13800138000/);
+});
+
+test("field diagnostic events expose structure evidence without form values", () => {
+  const event = diagnostics.createFieldEvent({
+    fieldId: "f_10",
+    kind: "text",
+    label: "学校名称",
+    sectionKey: "education",
+    sectionLabel: "教育经历",
+    sectionEvidence: "heading",
+    sectionLocked: true,
+    sectionItemIndex: 1,
+    value: "Sensitive University",
+  });
+
+  assert.deepEqual(event, {
+    type: "field",
+    fieldId: "f_10",
+    kind: "text",
+    label: "学校名称",
+    section: {
+      key: "education",
+      label: "教育经历",
+      evidence: "heading",
+      locked: true,
+      itemIndex: 1,
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(event), /Sensitive University/);
+});
+
+test("decision diagnostic events retain source, conflict, and final status", () => {
+  const event = diagnostics.createDecisionEvent({
+    field: {
+      fieldId: "f_11",
+      label: "结束时间",
+      sectionKey: "education",
+      sectionItemIndex: 0,
+    },
+    mapping: {
+      resumePath: "",
+      reason: "multiple candidates",
+      conflict: "start/end role ambiguous",
+    },
+    source: "cache",
+    status: "ambiguous",
+    detail: "未确定映射，已跳过",
+  });
+
+  assert.equal(event.type, "decision");
+  assert.equal(event.fieldId, "f_11");
+  assert.equal(event.source, "cache");
+  assert.equal(event.status, "ambiguous");
+  assert.equal(event.resumePath, "");
+  assert.equal(event.reason, "multiple candidates");
+  assert.equal(event.conflict, "start/end role ambiguous");
+  assert.equal(event.detail, "未确定映射，已跳过");
+});
+
+test("production fill messages carry machine-readable field and decision events", async () => {
+  const ext = loadExtension(
+    '<section><h2>教育经历</h2><label for="school">学校名称</label><input id="school"></section>'
+  );
+  try {
+    const profile = ext.window.ResumeSchema.normalizeResumeProfile({
+      educations: [{ school: "Example University" }],
+    });
+    await ext.request({
+      action: "startFill",
+      modelId: "",
+      resumeProfile: profile,
+      fillMode: "overwrite",
+      scope: "page",
+    });
+
+    const messages = ext.logs.filter((entry) => entry.type === "log");
+    assert.ok(messages.some((entry) => entry.event?.type === "field"));
+    assert.ok(
+      messages.some(
+        (entry) =>
+          entry.event?.type === "decision" &&
+          entry.event.status === "mapped" &&
+          entry.event.resumePath === "educations.0.school"
+      )
+    );
+  } finally {
+    ext.close();
+  }
 });

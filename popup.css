@@ -434,6 +434,52 @@ body {
   line-height: 1.6;
 }
 
+.decision-list,
+.memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.decision-item,
+.memory-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.decision-item strong,
+.memory-item strong {
+  font-size: 12px;
+  color: var(--text-main);
+}
+
+.decision-item span,
+.memory-item span {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.decision-item .decision-actions,
+.memory-item .decision-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.memory-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .section-block {
   display: flex;
   flex-direction: column;
@@ -1201,3 +1247,19 @@ body {
   font-size: 12px;
   white-space: nowrap;
 }
+/* Readable source material stays selectable even when page automation is unavailable. */
+.library-target { padding: 14px; border: 1px solid #dbe4ef; border-radius: 12px; background: #f8fafc; }
+.library-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.library-target-status, .library-feedback { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.library-feedback { color: #2563eb; min-height: 20px; margin: 12px 0; }
+.library-overwrite { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.library-section { border: 1px solid #dbe4ef; border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+.library-section > summary { padding: 14px; font-weight: 600; cursor: pointer; background: #f8fafc; }
+.library-record { padding: 14px; border-top: 1px solid #e5e7eb; }
+.library-record-title { font-size: 14px; margin: 0; overflow-wrap: anywhere; }
+.library-record-dates { font-size: 12px; color: #64748b; margin: 6px 0; }
+.library-fields > summary { cursor: pointer; font-size: 12px; color: #475569; padding: 8px 0; }
+.library-field { border-top: 1px solid #eef2f7; padding: 10px 0; }
+.library-field-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #64748b; font-size: 12px; }
+.library-value { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; cursor: text; font-size: 13px; line-height: 1.7; color: #1e293b; margin-top: 6px; }
+#stopFillBtn[hidden] { display: none; }

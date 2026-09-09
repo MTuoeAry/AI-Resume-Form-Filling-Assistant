@@ -2,48 +2,16 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const vm = require("node:vm");
-
-function loadNormalizer() {
-  const source = fs.readFileSync(path.join(__dirname, "../content.js"), "utf8");
-  const start = source.indexOf("function normalizeDeepScanText(value) {");
-  const end = source.indexOf("function getDeepScanText(el) {", start);
-  const context = { module: { exports: {} }, exports: {} };
-  vm.createContext(context);
-  vm.runInContext(
-    `${source.slice(start, end)}\nmodule.exports = normalizeDeepScanText;`,
-    context
-  );
-  return context.module.exports;
-}
-
-function loadRepeatCounter() {
-  const source = fs.readFileSync(path.join(__dirname, "../content.js"), "utf8");
-  const start = source.indexOf("function inferRepeatItemIndexFromIdentifier(el, schemaSectionKey) {");
-  const end = source.indexOf("async function waitForRepeatItem", start);
-  const context = {
-    module: { exports: {} },
-    exports: {},
-    LABEL_LIKE_SELECTOR: "label",
-    getRepeatSectionRoot: (trigger) => trigger.root,
-    normalizeDeepScanText: (value) => String(value || "").replace(/^\*|\*$/g, "").trim(),
-    isVisible: () => true,
-    isDormantEditorAction: () => false,
-    countControls: () => 0,
-    pendingRepeatItemIndexes: new WeakMap(),
-  };
-  vm.createContext(context);
-  vm.runInContext(
-    `${source.slice(start, end)}\nmodule.exports = countRenderedRepeatItems;`,
-    context
-  );
-  return context.module.exports;
-}
+const { loadExtension } = require("./helpers/dom-extension");
 
 test("repeat row labels ignore leading and trailing required markers", () => {
-  const normalize = loadNormalizer();
-  assert.equal(normalize("*项目名称"), "项目名称");
-  assert.equal(normalize("奖项名称＊"), "奖项名称");
+  const ext = loadExtension("<main></main>");
+  try {
+    assert.equal(ext.api.normalizeDeepScanText("*项目名称"), "项目名称");
+    assert.equal(ext.api.normalizeDeepScanText("奖项名称＊"), "奖项名称");
+  } finally {
+    ext.close();
+  }
 });
 
 test("content mapping failure keeps a deterministic local fallback", () => {
@@ -53,19 +21,17 @@ test("content mapping failure keeps a deterministic local fallback", () => {
 });
 
 test("repeat counting uses stable form-list ids when a site uses unexpected labels", () => {
-  const countRendered = loadRepeatCounter();
-  const controls = Array.from({ length: 8 }, (_, index) => ({
-    id: `basicInfo_recruitAwardList_${index}_awardTime`,
-    getAttribute: () => "",
-  }));
-  const root = {
-    querySelectorAll(selector) {
-      return selector === "label" ? [] : controls;
-    },
-  };
-
-  assert.equal(
-    countRendered({ root }, { sectionKey: "awards", rowLabels: ["奖项名称"] }),
-    8
+  const ids = Array.from(
+    { length: 8 },
+    (_, index) => `basicInfo_recruitAwardList_${index}_awardTime`
   );
+  const ext = loadExtension(ids.map((id) => `<input id="${id}">`).join(""));
+  try {
+    const indexes = Array.from(ext.window.document.querySelectorAll("input")).map((el) =>
+      ext.api.inferRepeatItemIndexFromIdentifier(el, "awards")
+    );
+    assert.equal(new Set(indexes.filter((index) => index >= 0)).size, 8);
+  } finally {
+    ext.close();
+  }
 });

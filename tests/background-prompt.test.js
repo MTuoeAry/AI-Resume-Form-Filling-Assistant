@@ -18,6 +18,6 @@ test("field mapping prompt includes campus recruiting constraints", () => {
   assert.match(source, /hasValue=true/);
   assert.match(source, /sectionLabel/);
   assert.match(source, /nearbyLabels/);
-  assert.match(source, /应届生没有正式工作经历时必须保持空数组/);
-  assert.match(source, /不能放入 workExperiences/);
+  assert.match(source, /allowedResumePaths/);
+  assert.match(source, /不得返回列表之外的路径/);
 });

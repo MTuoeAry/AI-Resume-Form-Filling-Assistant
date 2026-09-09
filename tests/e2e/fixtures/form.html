@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>简历填表 E2E 测试页</title>
+  </head>
+  <body>
+    <main>
+      <h1>虚构候选人信息</h1>
+      <form id="application-form">
+        <label for="full-name">姓名</label>
+        <input id="full-name" name="fullName" autocomplete="name">
+
+        <label for="email">电子邮箱</label>
+        <input id="email" name="email" type="email" autocomplete="email">
+
+        <button type="submit">提交</button>
+      </form>
+    </main>
+    <script>
+      window.__submitCount = 0;
+      document.getElementById("application-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        window.__submitCount += 1;
+      });
+    </script>
+  </body>
+</html>

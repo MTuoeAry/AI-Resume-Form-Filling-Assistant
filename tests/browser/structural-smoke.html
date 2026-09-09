@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><title>通用结构填写验收</title>
+<style>
+body{max-width:960px;margin:30px auto;font:16px system-ui;color:#25304c;background:#f5f7fb}section{padding:24px;background:white;border-radius:12px;margin:20px 0}dl{display:flex;gap:20px;align-items:start}dt{width:160px}dd{margin:0;display:flex;gap:12px}input,textarea{padding:8px;border:1px solid #adb8cb;border-radius:4px}.dropdown,.date-widget{border:1px solid #adb8cb;padding:8px;min-width:150px;cursor:pointer}ul{list-style:none;padding:0}li{padding:5px;cursor:pointer}li:hover{background:#dce8ff}button{padding:12px 20px}output{display:block;white-space:pre-wrap;margin:20px 0}[hidden]{display:none!important}
+</style>
+<h1>通用结构填写验收</h1><p>全部使用虚构数据；不联网调用模型，不提交表单。执行完整内容脚本。</p>
+<button id="run">运行整页与增量验收</button><output id="result">等待运行</output>
+<main>
+<section id="arbitrary-container"><h2>Education history</h2>
+<dl><dt>学校名称</dt><dd><input id="school" value="输入学校名称"></dd></dl>
+<dl><dt>学历</dt><dd><div id="level" class="dropdown"><span>请选择</span><ul hidden><li data-code="B">大学本科</li><li data-code="M">硕士研究生</li></ul></div></dd></dl>
+<dl><dt>学位</dt><dd><div id="academic" class="dropdown"><span>请选择</span><ul hidden><li data-code="B">学士</li><li data-code="M">硕士</li></ul></div></dd></dl>
+<dl><dt>时间</dt><dd id="date-range"></dd></dl>
+<dl><dt>专业课程</dt><dd><textarea id="courses"></textarea></dd></dl>
+<dl><dt>专业描述</dt><dd><textarea id="major-description"></textarea></dd></dl>
+<dl><dt>是否全日制 <input type="radio" name="fullTime" data-code="Y">是 <input type="radio" name="fullTime" data-code="N">否</dt></dl>
+</section>
+<section><h2>实习经历</h2><dl><dt>工作单位</dt><dd><input id="companyName" value=""></dd></dl><dl><dt>职位名称</dt><dd><input id="job" value=""></dd></dl></section>
+<section><h2>Projects</h2><dl><dt>项目名称</dt><dd><input id="project"></dd></dl><dl><dt>项目职责</dt><dd><input id="role"></dd></dl></section>
+</main>
+<script src="structural-smoke.js"></script>
+<script src="../../shared/resume-schema.js"></script><script src="../../shared/diagnostics.js"></script><script src="../../shared/field-text.js"></script><script src="../../shared/field-concepts.js"></script><script src="../../shared/mapping-policy.js"></script><script src="../../shared/field-semantics.js"></script><script src="../../shared/page-structure.js"></script><script src="../../shared/repeat-alignment.js"></script><script src="../../shared/repeat-flow.js"></script><script src="../../shared/fill-runtime.js"></script><script src="../../shared/site-adapters.js"></script><script src="../../shared/content-bridge.js"></script><script src="../../shared/ai-client.js"></script><script src="../../content.js"></script>
+</html>

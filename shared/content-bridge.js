@@ -11,7 +11,7 @@
   function () {
     "use strict";
 
-    const CONTENT_SCRIPT_VERSION = "2026-09-03-semantic-type-guards-v13";
+    const CONTENT_SCRIPT_VERSION = "2026-09-09-date-part-dropdown-v22";
 
     function contentScriptHasDiagnosticsSupport(status) {
       return Boolean(

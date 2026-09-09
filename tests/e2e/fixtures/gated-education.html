@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>逐条教育经历 E2E</title>
+  </head>
+  <body>
+    <main>
+      <section>
+        <h2>教育经历</h2>
+        <div id="edu-editor" class="card">
+          <label for="school">学校名称</label>
+          <input id="school">
+          <label for="start">开始时间</label>
+          <input id="start">
+        </div>
+        <div id="edu-cards"></div>
+        <button type="button" id="add-edu" disabled>新增教育经历</button>
+        <button type="submit" id="submit-app">提交申请</button>
+      </section>
+    </main>
+    <script>
+      window.__addClicks = 0;
+      window.__submitClicks = 0;
+      const school = document.getElementById("school");
+      const start = document.getElementById("start");
+      const add = document.getElementById("add-edu");
+      const cards = document.getElementById("edu-cards");
+      const sync = () => {
+        add.disabled = String(school.value || "").trim().length < 2;
+      };
+      school.addEventListener("input", sync);
+      school.addEventListener("change", sync);
+      add.addEventListener("click", () => {
+        if (add.disabled) return;
+        window.__addClicks += 1;
+        const card = document.createElement("article");
+        card.className = "saved-card";
+        card.innerHTML = "<strong>" + school.value + "</strong><span>" + (start.value || "") + "</span>";
+        cards.append(card);
+        school.value = "";
+        start.value = "";
+        sync();
+      });
+      document.getElementById("submit-app").addEventListener("click", () => {
+        window.__submitClicks += 1;
+      });
+      sync();
+    </script>
+  </body>
+</html>

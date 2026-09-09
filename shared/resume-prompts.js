@@ -22,6 +22,7 @@
       "6. 实习、实习生、Intern、Internship 经历必须放入 internships，不能放入 workExperiences。",
       "7. workExperiences 只用于正式工作；应届生没有正式工作经历时输出空数组，不得复制实习经历或创建占位条目。",
       "8. 下列枚举字段只能使用给定选项值：",
+      "学历层次 degree 与取得的学位 academicDegree 分开填写；不能仅凭本科/研究生推断已取得学士/硕士学位。isFullTime 只依据明确的全日制/非全日制信息填写。",
       optionRules,
       "",
       "固定 JSON 模板：",

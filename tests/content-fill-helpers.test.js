@@ -82,6 +82,11 @@ function loadHelpers() {
     HTMLTextAreaElement: MockTextAreaElement,
     Event: MockEvent,
     KeyboardEvent: MockEvent,
+    fillRuntime: {
+      inferRuntimeDateComponent(runtime) {
+        return runtime?.compositeRole || runtime?.dateComponent || "";
+      },
+    },
   };
   context.globalThis = context;
 
@@ -112,6 +117,24 @@ test("zero work experience selects the graduate option in recruiting pickers", (
       "0"
     ))),
     ["应届毕业生"]
+  );
+});
+
+test("year and month picker candidates prefer searchable date-part labels", () => {
+  const helpers = loadHelpers();
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.getCustomPickerDesiredCandidates(
+      { compositeRole: "year" },
+      "2026"
+    ))),
+    ["2026", "2026年"]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.getCustomPickerDesiredCandidates(
+      { compositeRole: "month" },
+      "06"
+    ))),
+    ["6月", "6", "06"]
   );
 });
 

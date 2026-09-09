@@ -1,10 +1,12 @@
 # 上游多简历模板合并清单
 
-本文件记录 2026-09-07 从上游选择性合入多简历模板能力的实际范围，不代替 Git diff。
+本文件是 **已提交的历史合并记录**：2026-09-07 选择性合入多简历模板能力，合并提交 `c0421ee`。以下 Schema v7、缓存 V13、158 项测试均为合并阶段状态，不是当前工作区基线，也不代替 Git diff。
+
+当前状态见 [HANDOFF.md](HANDOFF.md)，后续结构引擎与输入值修复见 [STRUCTURAL_ENGINE.md](STRUCTURAL_ENGINE.md)，未来工作见 [ROADMAP.md](ROADMAP.md)。
 
 ## 合并基线
 
-- 当前仓库基线：`84f53ce`（泛化字段映射与填充改造）。
+- 合并前仓库基线：`84f53ce`（泛化字段映射与填充改造）。
 - 上游来源：`https://github.com/1lck/AI-Resume-Form-Filling-Assistant.git`。
 - 上游提交：`76c052d`，包含 4 个相对共同基点的新提交。
 - 合并前安全分支：`backup/pre-upstream-merge-20260907`，指向 `84f53ce`。
@@ -39,13 +41,12 @@
 - 浏览器 UI 实测：待确认。
 - 真实招聘网站回归：待确认。
 
-## 提交后建议
+## 历史核对
 
 ```powershell
 git status --short
 git log -3 --oneline --decorate
-git show --stat --oneline HEAD
-git push origin master
+git show --stat --oneline c0421ee
 ```
 
-推送、打标签和发布扩展包需要由用户决定；本次合并不自动执行这些外部操作。
+后续提交应按当前 Git diff 单独整理，不能把结构引擎的未提交变更算作本次历史合并的一部分。

@@ -80,6 +80,21 @@ test("normalizeValueForRuntime preserves an exact day for day-capable start date
   );
 });
 
+test("month precision does not invent January from a year-only fact", () => {
+  assert.equal(
+    fillRuntime.normalizeValueForRuntime(
+      {
+        inputType: "text",
+        label: "毕业年月",
+        hasCalendarIcon: true,
+        pickerPrecision: "month",
+      },
+      "2026"
+    ),
+    ""
+  );
+});
+
 test("target date precision overrides a day-precision resume value", () => {
   assert.equal(
     fillRuntime.normalizeValueForRuntime(
@@ -134,6 +149,52 @@ test("year and month select controls are recognized as date components", () => {
   );
 });
 
+test("placeholder 年/月 dropdowns are treated as date parts", () => {
+  assert.equal(
+    fillRuntime.inferRuntimeDateComponent({
+      kind: "custom_picker",
+      placeholder: "年",
+      label: "获奖时间",
+    }),
+    "year"
+  );
+  assert.equal(
+    fillRuntime.inferRuntimeDateComponent({
+      kind: "custom_picker",
+      placeholder: "月",
+      label: "获奖时间",
+    }),
+    "month"
+  );
+});
+
+test("date-part dropdowns keep year/month fragments instead of calendar formats", () => {
+  assert.equal(
+    fillRuntime.normalizeValueForRuntime(
+      {
+        kind: "custom_picker",
+        compositeRole: "month",
+        placeholder: "月",
+        label: "获奖时间",
+      },
+      "06"
+    ),
+    "06"
+  );
+  assert.equal(
+    fillRuntime.normalizeValueForRuntime(
+      {
+        kind: "custom_picker",
+        compositeRole: "year",
+        placeholder: "年",
+        label: "获奖时间",
+      },
+      "2026"
+    ),
+    "2026"
+  );
+});
+
 test("isDateLikeRuntime recognizes editable calendar-backed award dates", () => {
   const runtime = {
     readOnly: false,
@@ -181,6 +242,23 @@ test("custom picker start dates are date-like even without a calendar class", ()
     }),
     false
   );
+});
+
+test("expandDateOptionCandidates maps YYYY-MM to localized dropdown labels without bare month numbers", () => {
+  assert.deepEqual(
+    fillRuntime.expandDateOptionCandidates("2024-09"),
+    [
+      "2024-09",
+      "2024/09",
+      "2024.09",
+      "2024年09月",
+      "2024年9月",
+    ]
+  );
+  assert.ok(!fillRuntime.expandDateOptionCandidates("2024-09").includes("9"));
+  assert.ok(!fillRuntime.expandDateOptionCandidates("2024-09").includes("2024"));
+  assert.deepEqual(fillRuntime.expandDateOptionCandidates("2024"), ["2024", "2024年"]);
+  assert.deepEqual(fillRuntime.expandDateOptionCandidates("本科"), ["本科"]);
 });
 
 test("matchesWrittenValue compares common localized date formats", () => {
